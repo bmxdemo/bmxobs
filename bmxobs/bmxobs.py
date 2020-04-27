@@ -20,7 +20,7 @@ class BMXObs:
     root_dir = (os.environ['BMX_DATA'] if "BMX_DATA" in os.environ
                 else "/gpfs02/astro/workarea/bmxdata/reduced/")
 
-    def __init__ (self, obs_dir, channels="" ):
+    def __init__ (self, obs_dir, channels=None):
         """Creates a basic object for manipulation of reduced BMX
            data
 
@@ -43,7 +43,8 @@ class BMXObs:
         """
         self.root = path.join(BMXObs.root_dir, obs_dir)
         self._load_aux()
-        self._load_data(channels)
+        if channels:
+            self._load_data(channels)
         self.N = len(self.mjd) ## all of the same size
         self.diode_buf_samp = 1
 

@@ -8,4 +8,6 @@ setup(
     version='0.1.0',
     description="BMX reduced data support",
     packages=find_packages(),
-    author="BMX team")
+    author="BMX team",
+    install_requires=['numpy', 'fitsio']
+)
