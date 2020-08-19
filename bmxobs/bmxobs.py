@@ -87,7 +87,6 @@ class BMXObs:
             self.spikeStart.append([])
             self.spikeEnd.append([])
             self.spikeWidth.append([])
-        self.data_mean_axis0 = {}
         
     def _load_data(self,channels):
         if channels == 'all':
@@ -301,7 +300,7 @@ class BMXObs:
                 outdata[id] = da2
 
         if to_self:
-            return self.data_mean_axis0
+            self.data
         else:
             return outdata   
             
