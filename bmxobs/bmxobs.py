@@ -79,6 +79,16 @@ class BMXObs:
         for i,freq in enumerate(self.freq):
             setattr(self,"freq%i"%i, freq)
         
+        #New variables added for Jesse O. remove_spikes functions
+        self.spikeStart = []
+        self.spikeEnd = []
+        self.spikeWidth = []
+        for i in range(self.nchan):
+            self.spikeStart.append([])
+            self.spikeEnd.append([])
+            self.spikeWidth.append([])
+        self.data_mean_axis0 = {}
+        
     def _load_data(self,channels):
         if channels == 'all':
             chlist = ['%i%i%i'%(i+1,j+1,c) for i in range(4) for j in range(i,4) for c in range(self.ncuts)]
@@ -170,6 +180,7 @@ class BMXObs:
                 id = int("%i%i%i"%(chan+1,chan+1,cut))
                 if id in self.data:
                     da = np.copy(self.data[id])
+                    gain = self.diode_r[id].mean(axis=0)
                     for (i,j),val in zip(donoff,self.diode_r[id]):
                         da[i+buf_samp:j,:]-=val
                         for k in range(buf_samp):
@@ -186,28 +197,114 @@ class BMXObs:
             return outdata
     
     #Function to remove narrow spikes from data set
-    def remove_narrow_spikes(self, to_self=True):
+    #This version runs each d.data[xxy] plot and removes any
+    #spikes that it finds, prepping the d.data[xxy].mean(axis=0) plot
+    def remove_narrow_spikes_V1(self, *args, to_self=True):
         outdata = {}
-        for cut in range(self.ncuts):
-            for chan in range(0,self.nchan):
-                id = int("%i%i%i"%(chan+1,chan+1,cut))
-                if id in self.data:
-                    da = np.copy(self.data[id])
-                    while True:
-                        if ((da[i+1] - da[i]) > 0.1):
-                            da[i+1] = np.NAN
-                        if i+1==self.N: break
-                    if to_self:
-                        self.data[id]= da
-                    else:
-                        outdata[id] = da
+        chan = args[0]
+        print("Channel input = %i" % chan)
+        cut = args[1]
+        print("Cut input = %i" % cut)
+        id = int("%i%i%i"%(chan,chan,cut))
+        if id in self.data:
+            da = np.copy(self.data[id])
+            for j in range(self.N):
+                if (j % 10000) == 0:
+                    print("Program is %f percent complete" % (100*j/self.N))
+                thresholdStart = 1.01*da[j][0]
+                threshold = 0
+                spikeTime = 0
+                narrowSpikesStart = []
+                narrowSpikesEnd = []
+                narrowSpikesWidth = []
+                dataSlope = (da[j][len(da[j])-1] - da[j][0]) / ((len(da[j])-1) - 0)
+                for i in range(len(da[j])):
+                    #Adjust for slanted baseline value of data
+                    threshold = thresholdStart + (i*dataSlope)
+                    if i == 0:
+                        if (da[j][i] >= threshold):
+                            narrowSpikesStart.append(i)
+                    if i>=1:
+                        #Previous data points (i-1) must be compared to previous threshold (threshold-1*dataSlope)
+                        if ((da[j][i] >= threshold) & (da[j][i-1] < (threshold)-1*dataSlope)):
+                            narrowSpikesStart.append(i)
+                        if ((da[j][i] < threshold) & (da[j][i-1] >= (threshold-1*dataSlope))):
+                            narrowSpikesEnd.append(i)
+                for i in range(len(narrowSpikesEnd)):
+                    narrowSpikesWidth.append(narrowSpikesEnd[i] - narrowSpikesStart[i])
+                    if (narrowSpikesEnd[i] - narrowSpikesStart[i]) < 8:
+                        for k in range(narrowSpikesStart[i], narrowSpikesEnd[i]):
+                            da[j][k] = da[j][0] + k*dataSlope
+                if to_self:
+                    self.spikeStart[chan-1].append(narrowSpikesStart)
+                    self.spikeEnd[chan-1].append(narrowSpikesEnd)
+                    self.spikeWidth[chan-1].append(narrowSpikesWidth)
+            if to_self:
+                self.data[id] = da
+            else:
+                outdata[id] = da
 
         if to_self:
             return self.data
         else:
             return outdata
-                    
-        
-                    
 
+
+    #Function to remove narrow spikes from data set
+    #This version runs over d.data[xxy].mean(axis=0) plots to find spikes, 
+    #and then goes back to remove them from the d.data[xxy] plots
+    def remove_narrow_spikes_V4(self, *args, to_self=True):
+        outdata = {}
+        chan = args[0]
+        print("Channel input = %i" % chan)
+        cut = args[1]
+        print("Cut input = %i" % cut)
+        id = int("%i%i%i"%(chan,chan,cut))
+        if id in self.data:
+            da = np.copy(self.data[id].mean(axis=0))
+            thresholdStart = 1.03*da[0]
+            threshold = 0
+            #spikeTime = 0
+            narrowSpikesStart = []
+            narrowSpikesEnd = []
+            narrowSpikesWidth = []
+            dataSlope = (da[len(da)-1] - da[0]) / ((len(da)-1) - 0)
+            for i in range(len(da)):
+               #Adjust for slanted baseline value of data
+                threshold = thresholdStart + (i*dataSlope)
+                #print("threshold = %f" % threshold)
+                if i == 0:
+                    if (da[i] >= threshold):
+                        narrowSpikesStart.append(i)
+                if i>=1:
+                    #Previous data points (i-1) must be compared to previous threshold (threshold-1*dataSlope)
+                    if ( (da[i] >= threshold) & (da[i-1] < (threshold-1*dataSlope)) ):
+                        narrowSpikesStart.append(i)
+                    if ( (da[i] < threshold) & (da[i-1] >= (threshold-1*dataSlope)) ):
+                        narrowSpikesEnd.append(i)
+            for i in range(len(narrowSpikesEnd)):
+                narrowSpikesWidth.append(narrowSpikesEnd[i] - narrowSpikesStart[i])
+            da2 = np.copy(self.data[id])      
+            for j in range(self.N):
+                #if (j % 10000) == 0:
+                    #print("Program is %f percent complete" % (100*j/self.N))
+                dataSlope2 = (da2[j][len(da2[j])-1] - da2[j][0]) / ((len(da2[j])-1) - 0)   
+                for i in range(len(narrowSpikesEnd)):
+                    if (narrowSpikesEnd[i] - narrowSpikesStart[i]) < 8:
+                        for k in range(narrowSpikesStart[i], narrowSpikesEnd[i]):
+                            da2[j][k] = np.nan
+            if to_self:
+                self.spikeStart[chan-1].append(narrowSpikesStart)
+                self.spikeEnd[chan-1].append(narrowSpikesEnd)
+                self.spikeWidth[chan-1].append(narrowSpikesWidth)                
+            if to_self:
+                self.data[id] = da2
+            else:
+                outdata[id] = da2
+
+        if to_self:
+            return self.data_mean_axis0
+        else:
+            return outdata   
+            
             
