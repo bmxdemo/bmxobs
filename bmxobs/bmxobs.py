@@ -213,7 +213,6 @@ class BMXObs:
                     print("Program is %f percent complete" % (100*j/self.N))
                 thresholdStart = 1.01*da[j][0]
                 threshold = 0
-                spikeTime = 0
                 narrowSpikesStart = []
                 narrowSpikesEnd = []
                 narrowSpikesWidth = []
@@ -264,7 +263,6 @@ class BMXObs:
             da = np.copy(self.data[id].mean(axis=0))
             thresholdStart = 1.03*da[0]
             threshold = 0
-            #spikeTime = 0
             narrowSpikesStart = []
             narrowSpikesEnd = []
             narrowSpikesWidth = []
