@@ -185,6 +185,27 @@ class BMXObs:
         else:
             return outdata
     
+    #Function to remove narrow spikes from data set
+    def remove_narrow_spikes(self, to_self=True):
+        outdata = {}
+        for cut in range(self.ncuts):
+            for chan in range(0,self.nchan):
+                id = int("%i%i%i"%(chan+1,chan+1,cut))
+                if id in self.data:
+                    da = np.copy(self.data[id])
+                    while True:
+                        if ((da[i+1] - da[i]) > 0.1):
+                            da[i+1] = np.NAN
+                        if i+1==self.N: break
+                    if to_self:
+                        self.data[id]= da
+                    else:
+                        outdata[id] = da
+
+        if to_self:
+            return self.data
+        else:
+            return outdata
                     
         
                     
