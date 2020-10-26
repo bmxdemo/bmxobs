@@ -55,7 +55,12 @@ class BMXObs:
             return lines
 
         def readfits (fn):
-            return fitsio.read(path.join(self.root,fn))
+            fname = path.join(self.root,fn)
+            if os.path.isfile(fname):
+                data = fitsio.read(path.join(self.root,fn))
+            else:
+                data = None
+            return data
         
         self.meta = set(readtxt('meta'))
         self.stage = int(readtxt('stage')[0])
@@ -67,6 +72,7 @@ class BMXObs:
             self.iwires[i+1] = n
         self.mjd = readfits('mjd.fits')['mjd']
         self.diode = readfits ('diode.fits')
+        self.temp = readfits('temperatures.fits')
         coords = readfits ('coords.fits')
         self.ra = coords['ra']
         self.dec = coords['dec']
