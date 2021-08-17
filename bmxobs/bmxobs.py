@@ -42,6 +42,11 @@ class BMXObs:
 
         """
         self.root = path.join(BMXObs.root_dir, obs_dir)
+        # check if meta tag exists
+        if not path.isfile(path.join(self.root,"meta")):
+            # not found
+            errstr = "Reduction not found. Forgot pas/ or fra/?"
+            raise ValueError(errstr)
         self._load_aux()
         if channels:
             self._load_data(channels)
@@ -57,10 +62,39 @@ class BMXObs:
         def readfits (fn):
             fname = path.join(self.root,fn)
             if os.path.isfile(fname):
-                data = fitsio.read(path.join(self.root,fn))
+                data = fitsio.read(fname)
             else:
                 data = None
             return data
+
+        def readsats(fn):
+            fname = path.join(self.root,fn)
+            if os.path.isfile(fname):
+                ext = 1
+                self.sat_id = []
+                self.sat_maxalt = []
+                self.sat =[]
+                while True:
+                    try:
+
+                        data,head = fitsio.read(fname,header=True, ext=ext)
+                    except OSError:
+                        break
+                    self.sat_id.append(head['SAT_ID'])
+                    try:
+                        self.sat_maxalt.append(head['MAX_ALT'])
+                    except: 
+                        pass
+                    data['alt'] *= np.pi/180
+                    data['az'] *= np.pi/180
+                    self.sat.append(data)
+                    if len(self.sat_maxalt) < len(self.sat_id):
+                        self.sat_maxalt = [d['alt'].max() for d in self.sat]
+                    self.sat_maxalt = np.array(self.sat_maxalt)
+                    ext+=1
+            else:
+                data = None
+
         
         self.meta = set(readtxt('meta'))
         self.stage = int(readtxt('stage')[0])
@@ -78,6 +112,7 @@ class BMXObs:
         self.dec = coords['dec']
         self.lgal = coords['lgal']
         self.bgal = coords['bgal']
+        readsats('satellites.fits')
         ## determine number of cuts
         self.ncuts = len(glob.glob(path.join(self.root,"cut*")))
         self.nchan = 8 ## let's fix this for now
