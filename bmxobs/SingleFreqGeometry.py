@@ -26,15 +26,14 @@ class SingleFreqGeometry:
                              [0,4],[4,0],[0,-4],[-4,0]])
         self.ant_beam = [SingleBeam() for i in range(8)]
         self.phi = np.zeros(8)
-        self.freq = freq
-        self.lambd = 3e8/(self.freq*1e6) # freq in MHz (lambda was taken as a keyword)
+        self.freq = freq #freq in MHz
 
     def point_source (self, channel, A, track):
         # track is a Ntimes x 2 size vector in x,y from zenith
         ch1 = channel // 10 - 1
         ch2 = channel % 10 - 1
         beams = self.ant_beam[ch1](track)*self.ant_beam[ch2](track)
-        baseline = (self.ant_pos[ch2]-self.ant_pos[ch1])/self.lambd
+        baseline = (self.ant_pos[ch2]-self.ant_pos[ch1]) * (self.freq*1e6 / 3e8) #freq*1e6/3e8 = 1/lambda
         if ch1==ch2:
             fringe = 1.0
         else:
