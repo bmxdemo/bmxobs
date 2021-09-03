@@ -5,24 +5,27 @@ import numpy as np
 import copy
 
 class TheoryPredictor:
-    def __init__(self, Data, Geometry = SingleFreqGeometry(), params = {}):
+    def __init__(self, Data, Geometry = SingleFreqGeometry(), params = {}, satAmp = 1):
         self.data = copy.deepcopy(Data)
         self.geometry = copy.deepcopy(Geometry)
         self.names = [] #names of parameters for dictionary input
         self.satAmps = {} #amplitude of signal from satellite
         for n in self.data.sat_id:
             if "COS" not in n:
-                self.satAmps[n] = 1
+                self.satAmps[n] = satAmp
                 self.names.append("A_{}".format(n))
         
-        self.names += ['freq','beam_sigma_x','beam_sigma_y','beam_smooth_x','beam_smooth_y']
+        self.names += ['freq','beam_sigma','beam_sigma_x','beam_sigma_y','beam_smooth','beam_smooth_x','beam_smooth_y']
         
+        self.names += ['D_all_dist']
         for i,ant_pos in enumerate(self.geometry.ant_pos):
             self.names += ['D{}_pos_x'.format(i+1),
                            'D{}_pos_y'.format(i+1),
                            'D{}_phi'.format(i+1),
                            'D{}_beam_center_x'.format(i+1),
                            'D{}_beam_center_y'.format(i+1)]
+            
+        
         
         if params != {}:
             self.setParameters(params)
@@ -36,18 +39,33 @@ class TheoryPredictor:
                 self.satAmps[n] = params["A_{}".format(n)]
         if 'freq' in params.keys():
             self.geometry.freq = params['freq']
+            
+        if 'beam_sigma' in params.keys():
+            sig2 = params['beam_sigma']**2
+            for i in range(len(self.geometry.ant_beam)):
+                self.geometry.ant_beam[i].sigma2 = np.array([sig2,sig2])
         if 'beam_sigma_x' in params.keys():
             for i in range(len(self.geometry.ant_beam)):
                 self.geometry.ant_beam[i].sigma2[0] = params['beam_sigma_x']**2
         if 'beam_sigma_y' in params.keys():
             for i in range(len(self.geometry.ant_beam)):
                 self.geometry.ant_beam[i].sigma2[1] = params['beam_sigma_y']**2
+                
+        if 'beam_smooth' in params.keys():
+            sm2 = params['beam_smooth']**2
+            for i in range(len(self.geometry.ant_beam)):
+                self.geometry.ant_beam[i].smooth2 = np.array([sm2,sm2])
         if 'beam_smooth_x' in params.keys():
             for i in range(len(self.geometry.ant_beam)):
                 self.geometry.ant_beam[i].smooth2[0] = params['beam_smooth_x']**2
         if 'beam_smooth_y' in params.keys():
             for i in range(len(self.geometry.ant_beam)):
                 self.geometry.ant_beam[i].smooth2[1] = params['beam_smooth_y']**2
+                
+        if 'D_all_dist' in params.keys():
+            r = params['D_all_dist']
+            self.geometry.ant_pos = np.array([[0,r],[r,0],[0,-r],[-r,0],
+                                             [0,r],[r,0],[0,-r],[-r,0]])
         for i in range(len(self.geometry.ant_pos)):
             if 'D{}_pos_x'.format(i+1) in params.keys():
                 self.geometry.ant_pos[i][0] = params['D{}_pos_x'.format(i+1)]
