@@ -4,7 +4,7 @@ from .bmxobs import BMXObs
 from scipy.special import j1
 
 class SingleBeam:
-    def __init__ (self, center = (0,0), sigma=(0.05,0.05), smooth=(0.2,0.2)):
+    def __init__ (self, center = (0.,0.), sigma=(0.05,0.05), smooth=(0.2,0.2)):
         self.center = np.array(center)
         self.sigma2 = np.array(sigma)**2
         self.smooth2 = np.array(smooth)**2
