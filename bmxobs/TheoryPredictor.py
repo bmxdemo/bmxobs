@@ -10,20 +10,27 @@ class TheoryPredictor:
         self.geometry = copy.deepcopy(Geometry)
         self.names = [] #names of parameters for dictionary input
         self.satAmps = {} #amplitude of signal from satellite
+        self.offsets = np.zeros(8)
         for n in self.data.sat_id:
             if "COS" not in n:
                 self.satAmps[n] = satAmp
                 self.names.append("A_{}".format(n))
         
-        self.names += ['freq','beam_sigma','beam_sigma_x','beam_sigma_y','beam_smooth','beam_smooth_x','beam_smooth_y']
+        self.names += ['freq','D_all_dist','beam_sigma','beam_sigma_x','beam_sigma_y','beam_smooth','beam_smooth_x','beam_smooth_y']
         
-        self.names += ['D_all_dist']
         for i,ant_pos in enumerate(self.geometry.ant_pos):
             self.names += ['D{}_pos_x'.format(i+1),
                            'D{}_pos_y'.format(i+1),
                            'D{}_phi'.format(i+1),
                            'D{}_beam_center_x'.format(i+1),
-                           'D{}_beam_center_y'.format(i+1)]
+                           'D{}_beam_center_y'.format(i+1),
+                           'D{}_beam_sigma'.format(i+1),
+                           'D{}_beam_sigma_x'.format(i+1),
+                           'D{}_beam_sigma_y'.format(i+1),
+                           'D{}_beam_smooth'.format(i+1),
+                           'D{}_beam_smooth_x'.format(i+1),
+                           'D{}_beam_smooth_y'.format(i+1),
+                           'CH{}_offset'.format((i+1)*11)]
             
         
         
@@ -77,21 +84,39 @@ class TheoryPredictor:
                 self.geometry.ant_beam[i].center[0] = params['D{}_beam_center_x'.format(i+1)]
             if 'D{}_beam_center_y'.format(i+1) in params.keys():
                 self.geometry.ant_beam[i].center[1] = params['D{}_beam_center_y'.format(i+1)]
+            if 'D{}_beam_sigma'.format(i+1) in params.keys():
+                a = params['D{}_beam_sigma'.format(i+1)]**2
+                self.geometry.ant_beam[i].sigma2 = np.array((a,a))
+            if 'D{}_beam_sigma_x'.format(i+1) in params.keys():
+                self.geometry.ant_beam[i].sigma2[0] = params['D{}_beam_sigma_x'.format(i+1)]**2
+            if 'D{}_beam_sigma_y'.format(i+1) in params.keys():
+                self.geometry.ant_beam[i].sigma2[1] = params['D{}_beam_sigma_y'.format(i+1)]**2
+            if 'D{}_beam_smooth'.format(i+1) in params.keys():
+                a = params['D{}_beam_smooth'.format(i+1)]**2
+                self.geometry.ant_beam[i].smooth2 = np.array((a,a))
+            if 'D{}_beam_smooth_x'.format(i+1) in params.keys():
+                self.geometry.ant_beam[i].smooth2[0] = params['D{}_beam_smooth_x'.format(i+1)]**2
+            if 'D{}_beam_smooth_y'.format(i+1) in params.keys():
+                self.geometry.ant_beam[i].smooth2[1] = params['D{}_beam_smooth_y'.format(i+1)]**2
+            if 'CH{}_offset'.format((i+1)*11) in params.keys():
+                self.offsets[i] = params['CH{}_offset'.format((i+1)*11)]
                 
     def readParameters(self): #return all parameters as dictionary
         params = self.satAmps.copy()
         params['freq'] = self.geometry.freq
-        for i in range(len(self.geometry.ant_beam)):
-            params['beam_sigma_x'] = np.sqrt(self.geometry.ant_beam[i].sigma2[0])
-            params['beam_sigma_y'] = np.sqrt(self.geometry.ant_beam[i].sigma2[1])
-            params['beam_smooth_x'] = np.sqrt(self.geometry.ant_beam[i].smooth2[0])
-            params['beam_smooth_y'] = np.sqrt(self.geometry.ant_beam[i].smooth2[1])
         for i,ant_pos in enumerate(self.geometry.ant_pos):
             params['D{}_pos_x'.format(i+1)] = ant_pos[0]
             params['D{}_pos_y'.format(i+1)] = ant_pos[1]
             params['D{}_phi'.format(i+1)] = self.geometry.phi[i]
             params['D{}_beam_center_x'.format(i+1)] = self.geometry.ant_beam[i].center[0]
             params['D{}_beam_center_y'.format(i+1)] = self.geometry.ant_beam[i].center[1]
+            params['D{}_beam_center_x'.format(i+1)] = self.geometry.ant_beam[i].center[0]
+            params['D{}_beam_center_y'.format(i+1)] = self.geometry.ant_beam[i].center[1]
+            params['D{}_beam_sigma_x'.format(i+1)] = np.sqrt(self.geometry.ant_beam[i].sigma2[0])
+            params['D{}_beam_sigma_y'.format(i+1)] = np.sqrt(self.geometry.ant_beam[i].sigma2[1])
+            params['D{}_beam_smooth_x'.format(i+1)] = np.sqrt(self.geometry.ant_beam[i].smooth2[0])
+            params['D{}_beam_smooth_y'.format(i+1)] = np.sqrt(self.geometry.ant_beam[i].smooth2[1])
+            params['CH{}_offset'.format((i+1)*11)] = self.offsets[i]
         return params
     
     def output(self, channel): #return theory predictions
@@ -101,4 +126,6 @@ class TheoryPredictor:
                 A = self.satAmps[n]
                 track = np.array([np.cos(s['alt'])*np.cos(s['az']),np.cos(s['alt'])*np.sin(s['az'])]).T
                 signal = signal + self.geometry.point_source(channel,A,track)
+        if (channel%11 == 0):
+            signal = signal + self.offsets[channel//11 - 1]
         return signal
