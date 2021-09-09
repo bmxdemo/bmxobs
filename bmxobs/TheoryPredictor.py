@@ -11,7 +11,7 @@ class TheoryPredictor:
         self.names = [] #names of parameters for dictionary input
         self.satAmps = {} #amplitude of signal from satellite
         self.offsets = np.zeros(8)
-        for n in self.data.sat_id:
+        for i,n in enumerate(self.data.sat_id):
             if "COS" not in n:
                 self.satAmps[n] = [satAmp]*8
                 self.names.append("A_{}".format(n))
