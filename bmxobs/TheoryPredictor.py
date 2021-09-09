@@ -13,8 +13,10 @@ class TheoryPredictor:
         self.offsets = np.zeros(8)
         for n in self.data.sat_id:
             if "COS" not in n:
-                self.satAmps[n] = satAmp
+                self.satAmps[n] = [satAmp]*8
                 self.names.append("A_{}".format(n))
+                for ch in range(8):
+                    self.names.append("A{}_{}".format(ch+1,n))
         
         self.names += ['freq','D_all_dist','beam_sigma','beam_sigma_x','beam_sigma_y','beam_smooth','beam_smooth_x','beam_smooth_y']
         
@@ -43,7 +45,10 @@ class TheoryPredictor:
     def setParameters(self, params): #set parameter values with dicitonary
         for n in self.satAmps.keys():
             if "A_{}".format(n) in params.keys():
-                self.satAmps[n] = params["A_{}".format(n)]
+                self.satAmps[n] = [params["A_{}".format(n)]]*8
+            for i in range(8):
+                if "A{}_{}".format(i+1,n) in params.keys():
+                    self.satAmps[n][i] = params["A{}_{}".format(i+1,n)]
         if 'freq' in params.keys():
             self.geometry.freq = params['freq']
             
@@ -102,7 +107,10 @@ class TheoryPredictor:
                 self.offsets[i] = params['CH{}_offset'.format((i+1)*11)]
                 
     def readParameters(self): #return all parameters as dictionary
-        params = self.satAmps.copy()
+        params = {}
+        for n in self.satAmps.keys():
+            for i in range(8):
+                params['A{}_{}'.format(i+1,n)] = self.satAmps[n][i]
         params['freq'] = self.geometry.freq
         for i,ant_pos in enumerate(self.geometry.ant_pos):
             params['D{}_pos_x'.format(i+1)] = ant_pos[0]
@@ -123,7 +131,7 @@ class TheoryPredictor:
         signal = np.zeros(len(self.data.sat[0]))
         for n,s in zip(self.data.sat_id,self.data.sat):
             if "COS" not in n:
-                A = self.satAmps[n]
+                A = self.satAmps[n][channel//10-1] * self.satAmps[n][channel%10-1]
                 track = np.array([np.cos(s['alt'])*np.cos(s['az']),np.cos(s['alt'])*np.sin(s['az'])]).T
                 signal = signal + self.geometry.point_source(channel,A,track)
         if (channel%11 == 0):
