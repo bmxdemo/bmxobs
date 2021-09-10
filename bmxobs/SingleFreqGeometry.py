@@ -22,8 +22,8 @@ class SingleBeam:
 class SingleFreqGeometry:
 
     def __init__(self,freq=1205.0):
-        self.ant_pos = np.array([[0,4],[4,0],[0,-4],[-4,0],
-                             [0,4],[4,0],[0,-4],[-4,0]])
+        self.ant_pos = np.array([[0.,4.],[4.,0.],[0.,-4.],[-4.,0.],
+                             [0.,4.],[4.,0.],[0.,-4.],[-4.,0.]])
         self.ant_beam = [SingleBeam() for i in range(8)]
         self.phi = np.zeros(8)
         self.freq = freq #freq in MHz

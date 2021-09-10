@@ -2,6 +2,8 @@ import bmxobs
 from bmxobs.SingleFreqGeometry import SingleFreqGeometry
 import fitsio
 import numpy as np
+import matplotlib.pyplot as plt
+from scipy.optimize import least_squares
 import copy
 
 class TheoryPredictor:
@@ -34,6 +36,10 @@ class TheoryPredictor:
                            'D{}_beam_smooth_y'.format(i+1),
                            'CH{}_offset'.format((i+1)*11)]
             
+        self.var = [] #names of independent variables when fitting
+        self.channels = [11,12,13,14,22,23,24,33,34,44] #channels for fit
+        self.cut = [0,len(self.data[11])] #cut of dataset when fitting
+        self.mode = '' #mode for fitting ('amp' for Amplitude, 'phase' for Phase)
         
         
         if params != {}:
@@ -132,8 +138,102 @@ class TheoryPredictor:
         for n,s in zip(self.data.sat_id,self.data.sat):
             if "COS" not in n:
                 A = self.satAmps[n][channel//10-1] * self.satAmps[n][channel%10-1]
-                track = np.array([np.cos(s['alt'])*np.cos(s['az']),np.cos(s['alt'])*np.sin(s['az'])]).T
+                track = np.array([np.cos(s['alt'])*np.sin(s['az']),np.cos(s['alt'])*np.cos(s['az'])]).T
                 signal = signal + self.geometry.point_source(channel,A,track)
         if (channel%11 == 0):
             signal = signal + self.offsets[channel//11 - 1]
         return signal
+        
+    def fitFunc(self, params):
+        p = {}
+        for i,n in enumerate(self.var):
+            p[n] = params[i]
+        self.setParameters(p)
+        out = []
+        for ch in self.channels:
+            prediction = self.output(ch)[self.cut[0]:self.cut[1]]
+            data = self.data[ch][self.cut[0]:self.cut[1]]
+            if self.mode == 'amp':
+                out.append(abs(data)-abs(prediction))
+            elif self.mode == 'phase':
+                pphase = prediction * abs(data)/abs(prediction)
+                out.append(data.real-pphase.real)
+                out.append(data.imag-pphase.imag)
+            else:
+                out.append(data.real-prediction.real)
+                out.append(data.imag-prediction.imag)
+        out = np.array(out).flatten()
+        return out/1e14
+
+    def showFit(self, channels = [], cut = [], mode = ''):
+        if channels == []:
+            channels = self.channels
+        if cut == []:
+            cut = self.cut
+        if mode == '':
+            mode = self.mode
+        Dout = []
+        Pout = []
+        for ch in channels:
+            prediction = self.output(ch)[cut[0]:cut[1]]
+            data = self.data[ch][cut[0]:cut[1]]
+            if mode == 'amp':
+                Dout.append(abs(data))
+                Pout.append(abs(prediction))
+            elif mode == 'phase':
+                pphase = prediction * abs(data)/abs(prediction)
+                Dout.append(data)
+                Pout.append(pphase)
+            else:
+                Dout.append(data)
+                Pout.append(prediction)
+        dat = np.array(Dout)
+        fit = np.array(Pout)
+        fig = plt.figure(figsize = (12,5*len(channels)))
+        axes = fig.subplots(nrows= len(dat), ncols=2)
+        if len(dat)==1:
+            axes = np.array([axes])
+
+        for i,ch in enumerate(channels):
+            axes[i][0].plot(dat[i].real,label='Data')
+            axes[i][0].plot(fit[i].real,label='Fit')
+
+            axes[i][1].plot(dat[i].imag,label='Data')
+            axes[i][1].plot(fit[i].imag,label='Fit')
+
+        plt.legend()
+
+        plt.tight_layout()
+        plt.show()
+        
+        return
+    
+    def fit(self, names, channels = [11,12,13,14,22,23,24,33,34,44], cut = [0,-1], mode = '', pprint = True, plot = True, output=True):
+        if cut[1] == -1:
+            cut[1] = len(self.data[11])
+        self.var = names
+        self.channels = channels
+        self.cut = cut
+        self.mode = mode
+        
+        params = []
+        state = self.readParameters()
+        for n in self.var:
+            params.append(state[n])
+        params = np.array(params)
+        
+        fit = least_squares(self.fitFunc,params)
+        params = fit.x
+        
+        p = {}
+        for i,n in enumerate(self.var):
+            p[n] = params[i]
+        self.setParameters(p)
+        
+        if pprint:
+            print(params)
+        if plot:
+            self.showFit()
+        if output:
+            return params
+        return
