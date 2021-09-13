@@ -16,7 +16,8 @@ class SingleBeam:
         r = (track-self.center[None,:])
         ra = np.sqrt((r*r/self.sigma2).sum(axis=1))
         gk = np.exp(-0.5*((r*r)/self.smooth2).sum(axis=1))
-        return airy(ra)*gk
+        beam = airy(ra)*gk
+        return beam/max(beam)
 
 
 class SingleFreqGeometry:

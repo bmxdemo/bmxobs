@@ -139,7 +139,8 @@ class TheoryPredictor:
             if "COS" not in n:
                 A = self.satAmps[n][channel//10-1] * self.satAmps[n][channel%10-1]
                 track = np.array([np.cos(s['alt'])*np.sin(s['az']),np.cos(s['alt'])*np.cos(s['az'])]).T
-                signal = signal + self.geometry.point_source(channel,A,track)
+                satOut = self.geometry.point_source(channel,1,track)
+                signal = signal + satOut*A
         if (channel%11 == 0):
             signal = signal + self.offsets[channel//11 - 1]
         return signal
