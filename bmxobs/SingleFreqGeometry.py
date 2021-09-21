@@ -17,7 +17,10 @@ class SingleBeam:
         ra = np.sqrt((r*r/self.sigma2).sum(axis=1))
         gk = np.exp(-0.5*((r*r)/self.smooth2).sum(axis=1))
         beam = airy(ra)*gk
-        return beam/max(beam)
+        if max(beam)>0:
+            return beam#/max(beam)
+        else:
+            return beam*0
 
 
 class SingleFreqGeometry:

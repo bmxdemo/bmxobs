@@ -7,20 +7,44 @@ from scipy.optimize import least_squares
 import copy
 
 class TheoryPredictor:
-    def __init__(self, Data, Geometry = SingleFreqGeometry(), params = {}, satAmp = 1):
+    def __init__(self, Data, Geometry = SingleFreqGeometry(), params = {}, satAmp = 1, satDelay = 0, thresh=0.01):
+        if type(Data) != list:
+            Data = [Data]
         self.data = copy.deepcopy(Data)
         self.geometry = copy.deepcopy(Geometry)
         self.names = [] #names of parameters for dictionary input
+        self.satNames = set()
         self.satAmps = {} #amplitude of signal from satellite
-        self.offsets = np.zeros(8)
-        for i,n in enumerate(self.data.sat_id):
-            if "COS" not in n:
-                self.satAmps[n] = [satAmp]*8
-                self.names.append("A_{}".format(n))
-                for ch in range(8):
-                    self.names.append("A{}_{}".format(ch+1,n))
+        self.offsets = np.array([
+            sum(self.data[0][11]-abs(self.data[0][12])*abs(self.data[0][13])/abs(self.data[0][23]))/len(self.data[0][11]),
+            sum(self.data[0][22]-abs(self.data[0][12])*abs(self.data[0][23])/abs(self.data[0][13]))/len(self.data[0][11]),
+            sum(self.data[0][33]-abs(self.data[0][13])*abs(self.data[0][23])/abs(self.data[0][12]))/len(self.data[0][11]),
+            sum(self.data[0][44]-abs(self.data[0][24])*abs(self.data[0][34])/abs(self.data[0][23]))/len(self.data[0][11]),
+            sum(self.data[0][55]-abs(self.data[0][56])*abs(self.data[0][57])/abs(self.data[0][67]))/len(self.data[0][11]),
+            sum(self.data[0][66]-abs(self.data[0][56])*abs(self.data[0][67])/abs(self.data[0][57]))/len(self.data[0][11]),
+            sum(self.data[0][77]-abs(self.data[0][57])*abs(self.data[0][67])/abs(self.data[0][56]))/len(self.data[0][11]),
+            sum(self.data[0][88]-abs(self.data[0][68])*abs(self.data[0][78])/abs(self.data[0][67]))/len(self.data[0][11])
+        ])
+        self.trackOff = {} #spatial offset for satellite tracks
+        self.timeOff = {} #index offset for satellite tracks
+        self.delay = int(satDelay)
+        for D in self.data:
+            for i,n in enumerate(D.sat_id):
+                if "COS" not in n:
+                    if min(np.cos(D.sat[i]['alt'])**2)<thresh:
+                        self.satNames = self.satNames | {n}
+        for n in self.satNames:
+            self.satAmps[n] = [satAmp]*8
+            self.trackOff[n] = np.array([0.,0.])
+            self.timeOff[n] = 0
+            self.names.append("A_{}".format(n))
+            self.names.append("{}_track_offset_x".format(n))
+            self.names.append("{}_track_offset_y".format(n))
+            self.names.append("{}_time_offset".format(n))
+            for ch in range(8):
+                self.names.append("A{}_{}".format(ch+1,n))
         
-        self.names += ['freq','D_all_dist','beam_sigma','beam_sigma_x','beam_sigma_y','beam_smooth','beam_smooth_x','beam_smooth_y']
+        self.names += ['freq','time_offset_all','D_all_dist','beam_sigma','beam_sigma_x','beam_sigma_y','beam_smooth','beam_smooth_x','beam_smooth_y']
         
         for i,ant_pos in enumerate(self.geometry.ant_pos):
             self.names += ['D{}_pos_x'.format(i+1),
@@ -38,7 +62,7 @@ class TheoryPredictor:
             
         self.var = [] #names of independent variables when fitting
         self.channels = [11,12,13,14,22,23,24,33,34,44] #channels for fit
-        self.cut = [0,len(self.data[11])] #cut of dataset when fitting
+        self.cut = [0,len(self.data[0][11])] #cut of dataset when fitting
         self.mode = '' #mode for fitting ('amp' for Amplitude, 'phase' for Phase)
         
         
@@ -52,11 +76,19 @@ class TheoryPredictor:
         for n in self.satAmps.keys():
             if "A_{}".format(n) in params.keys():
                 self.satAmps[n] = [params["A_{}".format(n)]]*8
+            if "{}_track_offset_x".format(n) in params.keys():
+                self.trackOff[n][0] = params["{}_track_offset_x".format(n)]
+            if "{}_track_offset_y".format(n) in params.keys():
+                self.trackOff[n][1] = params["{}_track_offset_y".format(n)]
+            if "{}_time_offset".format(n) in params.keys():
+                self.timeOff[n] = int(params["{}_time_offset".format(n)])
             for i in range(8):
                 if "A{}_{}".format(i+1,n) in params.keys():
                     self.satAmps[n][i] = params["A{}_{}".format(i+1,n)]
         if 'freq' in params.keys():
             self.geometry.freq = params['freq']
+        if 'time_offset_all' in params.keys():
+            self.delay = int(params['time_offset_all'])
             
         if 'beam_sigma' in params.keys():
             sig2 = params['beam_sigma']**2
@@ -117,7 +149,11 @@ class TheoryPredictor:
         for n in self.satAmps.keys():
             for i in range(8):
                 params['A{}_{}'.format(i+1,n)] = self.satAmps[n][i]
+            params["{}_track_offset_x".format(n)] = self.trackOff[n][0]
+            params["{}_track_offset_y".format(n)] = self.trackOff[n][1]
+            params["{}_time_offset".format(n)] = self.timeOff[n]
         params['freq'] = self.geometry.freq
+        params['time_offset_all'] = self.delay
         for i,ant_pos in enumerate(self.geometry.ant_pos):
             params['D{}_pos_x'.format(i+1)] = ant_pos[0]
             params['D{}_pos_y'.format(i+1)] = ant_pos[1]
@@ -133,14 +169,16 @@ class TheoryPredictor:
             params['CH{}_offset'.format((i+1)*11)] = self.offsets[i]
         return params
     
-    def output(self, channel): #return theory predictions
-        signal = np.zeros(len(self.data.sat[0]))
-        for n,s in zip(self.data.sat_id,self.data.sat):
-            if "COS" not in n:
+    def output(self, channel, datNum): #return theory predictions
+        D = self.data[datNum]
+        signal = np.zeros(len(D.sat[0]))
+        for n,s in zip(D.sat_id,D.sat):
+            if n in self.satNames:
                 A = self.satAmps[n][channel//10-1] * self.satAmps[n][channel%10-1]
-                track = np.array([np.cos(s['alt'])*np.sin(s['az']),np.cos(s['alt'])*np.cos(s['az'])]).T
+                track = np.array([np.cos(s['alt'])*np.sin(s['az']),np.cos(s['alt'])*np.cos(s['az'])]).T + self.trackOff[n]
                 satOut = self.geometry.point_source(channel,1,track)
-                signal = signal + satOut*A
+                satShift = np.roll(satOut, self.timeOff[n]+self.delay, axis=0) #Part of signal gets looped around; need to zero that out
+                signal = signal + satShift*A
         if (channel%11 == 0):
             signal = signal + self.offsets[channel//11 - 1]
         return signal
@@ -152,17 +190,18 @@ class TheoryPredictor:
         self.setParameters(p)
         out = []
         for ch in self.channels:
-            prediction = self.output(ch)[self.cut[0]:self.cut[1]]
-            data = self.data[ch][self.cut[0]:self.cut[1]]
-            if self.mode == 'amp':
-                out.append(abs(data)-abs(prediction))
-            elif self.mode == 'phase':
-                pphase = prediction * abs(data)/abs(prediction)
-                out.append(data.real-pphase.real)
-                out.append(data.imag-pphase.imag)
-            else:
-                out.append(data.real-prediction.real)
-                out.append(data.imag-prediction.imag)
+            for i,D in enumerate(self.data):
+                prediction = self.output(ch, i)[self.cut[0]:self.cut[1]]
+                data = D[ch][self.cut[0]:self.cut[1]]
+                if self.mode == 'amp':
+                    out.append(abs(data)-abs(prediction))
+                elif self.mode == 'phase':
+                    pphase = prediction * abs(data)/abs(prediction)
+                    out.append(data.real-pphase.real)
+                    out.append(data.imag-pphase.imag)
+                else:
+                    out.append(data.real-prediction.real)
+                    out.append(data.imag-prediction.imag)
         out = np.array(out).flatten()
         return out/1e14
 
@@ -176,42 +215,42 @@ class TheoryPredictor:
         Dout = []
         Pout = []
         for ch in channels:
-            prediction = self.output(ch)[cut[0]:cut[1]]
-            data = self.data[ch][cut[0]:cut[1]]
-            if mode == 'amp':
-                Dout.append(abs(data))
-                Pout.append(abs(prediction))
-            elif mode == 'phase':
-                pphase = prediction * abs(data)/abs(prediction)
-                Dout.append(data)
-                Pout.append(pphase)
-            else:
-                Dout.append(data)
-                Pout.append(prediction)
+            for i,D in enumerate(self.data):
+                prediction = self.output(ch, i)[cut[0]:cut[1]]
+                data = D[ch][cut[0]:cut[1]]
+                if mode == 'amp':
+                    Dout.append(abs(data))
+                    Pout.append(abs(prediction))
+                elif mode == 'phase':
+                    pphase = prediction * abs(data)/abs(prediction)
+                    Dout.append(data)
+                    Pout.append(pphase)
+                else:
+                    Dout.append(data)
+                    Pout.append(prediction)
         dat = np.array(Dout)
         fit = np.array(Pout)
-        fig = plt.figure(figsize = (12,5*len(channels)))
-        axes = fig.subplots(nrows= len(dat), ncols=2)
-        if len(dat)==1:
-            axes = np.array([axes])
 
-        for i,ch in enumerate(channels):
-            axes[i][0].plot(dat[i].real,label='Data')
-            axes[i][0].plot(fit[i].real,label='Fit')
+        for i in range(len(dat)):
+            fig = plt.figure(figsize = (12,5))
+            axes = fig.subplots(ncols=2)
+            axes[0].plot(dat[i].real,label='Data')
+            axes[0].plot(fit[i].real,label='Fit')
+            axes[0].text(0.45,1.05,'Real', transform=axes[0].transAxes)
 
-            axes[i][1].plot(dat[i].imag,label='Data')
-            axes[i][1].plot(fit[i].imag,label='Fit')
-
-        plt.legend()
-
-        plt.tight_layout()
-        plt.show()
+            axes[1].plot(dat[i].imag,label='Data')
+            axes[1].plot(fit[i].imag,label='Fit')
+            axes[1].text(0.45,1.05,'Imag', transform=axes[1].transAxes)
+            
+            fig.text(0.9,1.1,'CH {} Fit - DataSet {}'.format(channels[i//len(self.data)], i%len(self.data)), transform=axes[0].transAxes)
+            plt.legend()
+            plt.show()
         
         return
     
     def fit(self, names, channels = [11,12,13,14,22,23,24,33,34,44], cut = [0,-1], mode = '', pprint = True, plot = True, output=True):
         if cut[1] == -1:
-            cut[1] = len(self.data[11])
+            cut[1] = len(self.data[0][11])
         self.var = names
         self.channels = channels
         self.cut = cut
