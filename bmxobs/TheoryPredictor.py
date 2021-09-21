@@ -28,6 +28,12 @@ class TheoryPredictor:
         self.trackOff = {} #spatial offset for satellite tracks
         self.timeOff = {} #index offset for satellite tracks
         self.delay = int(satDelay)
+        
+        self.astroNames = [] #Names of astronomical objects included in the fit
+        self.astroTracks = [[] for D in self.data] #tracks of astronomical objects for each data set
+        self.astroAmps = {} #amplitude of signal from astronomical object
+        
+        
         for D in self.data:
             for i,n in enumerate(D.sat_id):
                 if "COS" not in n:
@@ -179,11 +185,14 @@ class TheoryPredictor:
                 satOut = self.geometry.point_source(channel,1,track)
                 satShift = np.roll(satOut, self.timeOff[n]+self.delay, axis=0) #Part of signal gets looped around; need to zero that out
                 signal = signal + satShift*A
+        for n,track in zip(self.astroNames, self.astroTracks[datNum]):
+            A = self.astroAmps[n][channel//10-1] * self.astroAmps[n][channel%10-1]
+            signal = signal + self.geometry.point_source(channel,A,track)
         if (channel%11 == 0):
             signal = signal + self.offsets[channel//11 - 1]
         return signal
         
-    def fitFunc(self, params):
+    def fitFunc(self, params): #parameterized function used in fitting
         p = {}
         for i,n in enumerate(self.var):
             p[n] = params[i]
@@ -205,7 +214,7 @@ class TheoryPredictor:
         out = np.array(out).flatten()
         return out/1e14
 
-    def showFit(self, channels = [], cut = [], mode = ''):
+    def showFit(self, channels = [], cut = [], mode = ''): #display graphs of fitted results
         if channels == []:
             channels = self.channels
         if cut == []:
