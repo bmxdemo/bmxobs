@@ -7,7 +7,7 @@ from scipy.optimize import least_squares
 import copy
 
 class TheoryPredictor:
-    def __init__(self, Data, Geometry = SingleFreqGeometry(), params = {}, satAmp = 1, satDelay = 0, thresh=0.01):
+    def __init__(self, Data, Geometry = SingleFreqGeometry(), astroObj = {}, params = {}, satAmp = 1, satDelay = 0, thresh=0.01, astAmp = 0):
         if type(Data) != list:
             Data = [Data]
         self.data = copy.deepcopy(Data)
@@ -29,8 +29,8 @@ class TheoryPredictor:
         self.timeOff = {} #index offset for satellite tracks
         self.delay = int(satDelay)
         
-        self.astroNames = [] #Names of astronomical objects included in the fit
-        self.astroTracks = [[] for D in self.data] #tracks of astronomical objects for each data set
+        self.astroNames = list(astroObj.keys()) #Names of astronomical objects included in the fit
+        self.astroTracks = self.astTrack(np.array([astroObj[n] for n in self.astroNames])) #tracks of astronomical objects for each data set
         self.astroAmps = {} #amplitude of signal from astronomical object
         
         
@@ -47,6 +47,10 @@ class TheoryPredictor:
             self.names.append("{}_track_offset_x".format(n))
             self.names.append("{}_track_offset_y".format(n))
             self.names.append("{}_time_offset".format(n))
+            for ch in range(8):
+                self.names.append("A{}_{}".format(ch+1,n))
+        for n in self.astroNames:
+            self.astroAmps[n] = [astAmp]*8
             for ch in range(8):
                 self.names.append("A{}_{}".format(ch+1,n))
         
@@ -75,11 +79,30 @@ class TheoryPredictor:
         if params != {}:
             self.setParameters(params)
     
+    def astTrack(self, astro): #generates track for astronomical objects from RA and DEC
+        if len(astro)>0:
+            track = []
+            RA, DEC = astro[:,0], astro[:,1]
+            for D in self.data:
+                t = []
+                for ra, dec in zip(RA, DEC):
+                    HA = D.ra - ra
+                    ALT = np.arcsin(np.sin(dec)*np.sin(D.dec)+np.cos(dec)*np.cos(D.dec)*np.cos(HA))
+                    a = (np.sin(dec) - np.sin(ALT)*np.sin(D.dec))/(np.cos(ALT)*np.cos(D.dec))
+                    a[a>1] = 1
+                    a[a<1] = -1
+                    AZ = np.arccos(a) + np.pi*(np.sin(HA)<0) #* (2*(np.sin(HA)>0)-1)
+                    t.append(np.moveaxis(np.array([np.cos(ALT)*np.sin(AZ),np.cos(ALT)*np.cos(AZ)]),0,-1))
+                track.append(t)
+            return np.array(track)
+        else:
+            return np.array([])
+    
     def allParameters(self): #return all parameter names
         return self.names
     
     def setParameters(self, params): #set parameter values with dicitonary
-        for n in self.satAmps.keys():
+        for n in self.satNames:
             if "A_{}".format(n) in params.keys():
                 self.satAmps[n] = [params["A_{}".format(n)]]*8
             if "{}_track_offset_x".format(n) in params.keys():
@@ -91,6 +114,10 @@ class TheoryPredictor:
             for i in range(8):
                 if "A{}_{}".format(i+1,n) in params.keys():
                     self.satAmps[n][i] = params["A{}_{}".format(i+1,n)]
+        for n in self.astroNames:
+            for i in range(8):
+                if "A{}_{}".format(i+1,n) in params.keys():
+                    self.astroAmps[n][i] = params["A{}_{}".format(i+1,n)]
         if 'freq' in params.keys():
             self.geometry.freq = params['freq']
         if 'time_offset_all' in params.keys():
@@ -152,12 +179,15 @@ class TheoryPredictor:
                 
     def readParameters(self): #return all parameters as dictionary
         params = {}
-        for n in self.satAmps.keys():
+        for n in self.satNames:
             for i in range(8):
                 params['A{}_{}'.format(i+1,n)] = self.satAmps[n][i]
             params["{}_track_offset_x".format(n)] = self.trackOff[n][0]
             params["{}_track_offset_y".format(n)] = self.trackOff[n][1]
             params["{}_time_offset".format(n)] = self.timeOff[n]
+        for n in self.astroNames:
+            for i in range(8):
+                params['A{}_{}'.format(i+1,n)] = self.astroAmps[n][i]
         params['freq'] = self.geometry.freq
         params['time_offset_all'] = self.delay
         for i,ant_pos in enumerate(self.geometry.ant_pos):
@@ -180,13 +210,14 @@ class TheoryPredictor:
         signal = np.zeros(len(D.sat[0]))
         for n,s in zip(D.sat_id,D.sat):
             if n in self.satNames:
-                A = self.satAmps[n][channel//10-1] * self.satAmps[n][channel%10-1]
+                A = abs(self.satAmps[n][channel//10-1] * self.satAmps[n][channel%10-1])
                 track = np.array([np.cos(s['alt'])*np.sin(s['az']),np.cos(s['alt'])*np.cos(s['az'])]).T + self.trackOff[n]
                 satOut = self.geometry.point_source(channel,1,track)
                 satShift = np.roll(satOut, self.timeOff[n]+self.delay, axis=0) #Part of signal gets looped around; need to zero that out
                 signal = signal + satShift*A
-        for n,track in zip(self.astroNames, self.astroTracks[datNum]):
-            A = self.astroAmps[n][channel//10-1] * self.astroAmps[n][channel%10-1]
+        if len(self.astroNames)>0:
+            for n,track in zip(self.astroNames, self.astroTracks[datNum]):
+                A = self.astroAmps[n][channel//10-1] * self.astroAmps[n][channel%10-1]
             signal = signal + self.geometry.point_source(channel,A,track)
         if (channel%11 == 0):
             signal = signal + self.offsets[channel//11 - 1]
@@ -251,7 +282,7 @@ class TheoryPredictor:
             axes[1].plot(fit[i].imag,label='Fit')
             axes[1].text(0.45,1.05,'Imag', transform=axes[1].transAxes)
             
-            fig.text(0.9,1.1,'CH {} Fit - DataSet {}'.format(channels[i//len(self.data)], i%len(self.data)), transform=axes[0].transAxes)
+            fig.text(0.85,1.1,'CH {} Fit - DataSet {} - [{}:{}]'.format(channels[i//len(self.data)], i%len(self.data), cut[0],cut[1]), transform=axes[0].transAxes)
             plt.legend()
             plt.show()
         
