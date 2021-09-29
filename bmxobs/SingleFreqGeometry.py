@@ -18,7 +18,7 @@ class SingleBeam:
         gk = np.exp(-0.5*((r*r)/self.smooth2).sum(axis=1))
         beam = airy(ra)*gk
         if max(beam)>0:
-            return beam#/max(beam)
+            return beam/max(beam)
         else:
             return beam*0
 
