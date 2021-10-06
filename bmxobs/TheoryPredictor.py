@@ -16,48 +16,48 @@ class TheoryPredictor:
         self.satNames = set()
         self.satAmps = {} #amplitude of signal from satellite
         self.offsets_r = {
-            11:min(self.data[0][11]).real,
+            11:min(self.data[0][11].real),
             12:self.data[0][12].mean(axis=0).real,
             13:self.data[0][13].mean(axis=0).real,
             14:self.data[0][14].mean(axis=0).real,
-            22:min(self.data[0][22]).real,
+            22:min(self.data[0][22].real),
             23:self.data[0][23].mean(axis=0).real,
             24:self.data[0][24].mean(axis=0).real,
-            33:min(self.data[0][33]).real,
+            33:min(self.data[0][33].real),
             34:self.data[0][34].mean(axis=0).real,
-            44:min(self.data[0][44]).real,
-            55:min(self.data[0][55]).real,
+            44:min(self.data[0][44].real),
+            55:min(self.data[0][55].real),
             56:self.data[0][56].mean(axis=0).real,
             57:self.data[0][57].mean(axis=0).real,
             58:self.data[0][58].mean(axis=0).real,
-            66:min(self.data[0][66]).real,
+            66:min(self.data[0][66].real),
             67:self.data[0][67].mean(axis=0).real,
             68:self.data[0][68].mean(axis=0).real,
-            77:min(self.data[0][77]).real,
+            77:min(self.data[0][77].real),
             78:self.data[0][78].mean(axis=0).real,
-            88:min(self.data[0][88]).real
+            88:min(self.data[0][88].real),
         }
         self.offsets_i = {
-            11:min(self.data[0][11]).imag,
+            11:min(self.data[0][11].imag),
             12:self.data[0][12].mean(axis=0).imag,
             13:self.data[0][13].mean(axis=0).imag,
             14:self.data[0][14].mean(axis=0).imag,
-            22:min(self.data[0][22]).imag,
+            22:min(self.data[0][22].imag),
             23:self.data[0][23].mean(axis=0).imag,
             24:self.data[0][24].mean(axis=0).imag,
-            33:min(self.data[0][33]).imag,
+            33:min(self.data[0][33].imag),
             34:self.data[0][34].mean(axis=0).imag,
-            44:min(self.data[0][44]).imag,
-            55:min(self.data[0][55]).imag,
+            44:min(self.data[0][44].imag),
+            55:min(self.data[0][55].imag),
             56:self.data[0][56].mean(axis=0).imag,
             57:self.data[0][57].mean(axis=0).imag,
             58:self.data[0][58].mean(axis=0).imag,
-            66:min(self.data[0][66]).imag,
+            66:min(self.data[0][66].imag),
             67:self.data[0][67].mean(axis=0).imag,
             68:self.data[0][68].mean(axis=0).imag,
-            77:min(self.data[0][77]).imag,
+            77:min(self.data[0][77].imag),
             78:self.data[0][78].mean(axis=0).imag,
-            88:min(self.data[0][88]).imag
+            88:min(self.data[0][88].imag)
         }
         self.trackOff = {} #spatial offset for satellite tracks
         self.timeOff = {} #index offset for satellite tracks
@@ -74,7 +74,7 @@ class TheoryPredictor:
                     if min(np.cos(D.sat[i]['alt'])**2)<thresh:
                         self.satNames = self.satNames | {n}
         for n in self.satNames:
-            self.satAmps[n] = [[satAmp]*len(self.data)]*8
+            self.satAmps[n] = np.zeros((8,2)) + satAmp
             self.trackOff[n] = np.array([0.,0.])
             self.timeOff[n] = 0
             self.names.append("A_{}".format(n))
@@ -91,7 +91,7 @@ class TheoryPredictor:
                 for i in range(len(self.data)):
                     self.names.append("A{}_{}_{}".format(ch+1,n,i))
         
-        self.names += ['freq','time_offset_all','D_all_dist','beam_sigma','beam_sigma_x','beam_sigma_y','beam_smooth','beam_smooth_x','beam_smooth_y']
+        self.names += ['freq','airy','fix_amplitude','time_offset_all','D_all_dist','beam_sigma','beam_sigma_x','beam_sigma_y','beam_smooth','beam_smooth_x','beam_smooth_y']
         
         for i,ant_pos in enumerate(self.geometry.ant_pos):
             self.names += ['D{}_pos_x'.format(i+1),
@@ -115,7 +115,6 @@ class TheoryPredictor:
         self.cut = [0,len(self.data[0][11])] #cut of dataset when fitting
         self.mode = '' #mode for fitting ('amp' for Amplitude, 'phase' for Phase)
         self.datNum = list(range(len(self.data))) #datasets actively being used in fitting
-        
         
         if params != {}:
             self.setParameters(params)
@@ -165,6 +164,12 @@ class TheoryPredictor:
                         self.astroAmps[n][i][j] = params["A{}_{}_{}".format(i+1,n,j)]
         if 'freq' in params.keys():
             self.geometry.freq = params['freq']
+        if 'airy' in params.keys():
+            for i in range(len(self.geometry.ant_beam)):
+                self.geometry.ant_beam[i].airy = params['airy']
+        if 'fix_amplitude' in params.keys():
+            for i in range(len(self.geometry.ant_beam)):
+                self.geometry.ant_beam[i].fixAmp = params['fix_amplitude']
         if 'time_offset_all' in params.keys():
             self.delay = int(params['time_offset_all'])
             

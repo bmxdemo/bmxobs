@@ -4,10 +4,12 @@ from .bmxobs import BMXObs
 from scipy.special import j1
 
 class SingleBeam:
-    def __init__ (self, center = (0.,0.), sigma=(0.05,0.05), smooth=(0.2,0.2)):
+    def __init__ (self, center = (0.,0.), sigma=(0.05,0.05), smooth=(0.2,0.2), airy = True, fixAmp = True):
         self.center = np.array(center)
         self.sigma2 = np.array(sigma)**2
         self.smooth2 = np.array(smooth)**2
+        self.airy = airy #Airy vs Gaussian
+        self.fixAmp = fixAmp #Sets each peak to have height 1
 
     def __call__ (self, track):
         def airy(x):
@@ -16,19 +18,25 @@ class SingleBeam:
         r = (track-self.center[None,:])
         ra = np.sqrt((r*r/self.sigma2).sum(axis=1))
         gk = np.exp(-0.5*((r*r)/self.smooth2).sum(axis=1))
-        beam = airy(ra)*gk
-        if max(beam)>0:
-            return beam/max(beam)
+        if self.airy:
+            beam = airy(ra)*gk
         else:
-            return beam*0
+            beam = gk
+        if self.fixAmp:
+            if max(beam)>0:
+                return beam/max(beam)
+            else:
+                return beam*0
+        else:
+            return beam
 
 
 class SingleFreqGeometry:
 
-    def __init__(self,freq=1205.0):
+    def __init__(self,freq=1205.0, airy=True, fixAmp = True):
         self.ant_pos = np.array([[0.,4.],[4.,0.],[0.,-4.],[-4.,0.],
                              [0.,4.],[4.,0.],[0.,-4.],[-4.,0.]])
-        self.ant_beam = [SingleBeam() for i in range(8)]
+        self.ant_beam = [SingleBeam(airy=airy, fixAmp=fixAmp) for i in range(8)]
         self.phi = np.zeros(8)
         self.freq = freq #freq in MHz
 
