@@ -7,7 +7,7 @@ from scipy.optimize import least_squares
 import copy
 
 class TheoryPredictor:
-    def __init__(self, Data, Geometry = SingleFreqGeometry(), astroObj = {}, params = {}, satAmp = 1, satDelay = 0, thresh=0.01, astAmp = 0):
+    def __init__(self, Data, Geometry = SingleFreqGeometry(), astroObj = {}, params = {}, satAmp = 1, satDelay = 0, thresh=0.04, astAmp = 0):
         if type(Data) != list:
             Data = [Data]
         self.data = copy.deepcopy(Data)
@@ -17,46 +17,46 @@ class TheoryPredictor:
         self.satAmps = {} #amplitude of signal from satellite
         self.offsets_r = {
             11:min(self.data[0][11].real),
-            12:self.data[0][12].mean(axis=0).real,
-            13:self.data[0][13].mean(axis=0).real,
-            14:self.data[0][14].mean(axis=0).real,
+            12:0,
+            13:0,
+            14:0,
             22:min(self.data[0][22].real),
-            23:self.data[0][23].mean(axis=0).real,
-            24:self.data[0][24].mean(axis=0).real,
+            23:0,
+            24:0,
             33:min(self.data[0][33].real),
-            34:self.data[0][34].mean(axis=0).real,
+            34:0,
             44:min(self.data[0][44].real),
             55:min(self.data[0][55].real),
-            56:self.data[0][56].mean(axis=0).real,
-            57:self.data[0][57].mean(axis=0).real,
-            58:self.data[0][58].mean(axis=0).real,
+            56:0,
+            57:0,
+            58:0,
             66:min(self.data[0][66].real),
-            67:self.data[0][67].mean(axis=0).real,
-            68:self.data[0][68].mean(axis=0).real,
+            67:0,
+            68:0,
             77:min(self.data[0][77].real),
-            78:self.data[0][78].mean(axis=0).real,
+            78:0,
             88:min(self.data[0][88].real),
         }
         self.offsets_i = {
             11:min(self.data[0][11].imag),
-            12:self.data[0][12].mean(axis=0).imag,
-            13:self.data[0][13].mean(axis=0).imag,
-            14:self.data[0][14].mean(axis=0).imag,
+            12:0,
+            13:0,
+            14:0,
             22:min(self.data[0][22].imag),
-            23:self.data[0][23].mean(axis=0).imag,
-            24:self.data[0][24].mean(axis=0).imag,
+            23:0,
+            24:0,
             33:min(self.data[0][33].imag),
-            34:self.data[0][34].mean(axis=0).imag,
+            34:0,
             44:min(self.data[0][44].imag),
             55:min(self.data[0][55].imag),
-            56:self.data[0][56].mean(axis=0).imag,
-            57:self.data[0][57].mean(axis=0).imag,
-            58:self.data[0][58].mean(axis=0).imag,
+            56:0,
+            57:0,
+            58:0,
             66:min(self.data[0][66].imag),
-            67:self.data[0][67].mean(axis=0).imag,
-            68:self.data[0][68].mean(axis=0).imag,
+            67:0,
+            68:0,
             77:min(self.data[0][77].imag),
-            78:self.data[0][78].mean(axis=0).imag,
+            78:0,
             88:min(self.data[0][88].imag)
         }
         self.trackOff = {} #spatial offset for satellite tracks
@@ -74,7 +74,7 @@ class TheoryPredictor:
                     if min(np.cos(D.sat[i]['alt'])**2)<thresh:
                         self.satNames = self.satNames | {n}
         for n in self.satNames:
-            self.satAmps[n] = np.zeros((8,2)) + satAmp
+            self.satAmps[n] = np.zeros((8,len(self.data))) + satAmp
             self.trackOff[n] = np.array([0.,0.])
             self.timeOff[n] = 0
             self.names.append("A_{}".format(n))
@@ -86,7 +86,7 @@ class TheoryPredictor:
                 for i in range(len(self.data)):
                     self.names.append("A{}_{}_{}".format(ch+1,n,i))
         for n in self.astroNames:
-            self.astroAmps[n] = [[astAmp]*len(self.data)]*8
+            self.astroAmps[n] = np.zeros((8,len(self.data))) + astAmp
             for ch in range(8):
                 for i in range(len(self.data)):
                     self.names.append("A{}_{}_{}".format(ch+1,n,i))
@@ -144,7 +144,7 @@ class TheoryPredictor:
     def setParameters(self, params): #set parameter values with dicitonary
         for n in self.satNames:
             if "A_{}".format(n) in params.keys():
-                self.satAmps[n] = [[params["A_{}".format(n)]]*len(self.data)]*8
+                self.satAmps[n] = np.zeros((8,len(self.data))) + params["A_{}".format(n)]
             if "{}_track_offset_x".format(n) in params.keys():
                 self.trackOff[n][0] = params["{}_track_offset_x".format(n)]
             if "{}_track_offset_y".format(n) in params.keys():
@@ -153,15 +153,15 @@ class TheoryPredictor:
                 self.timeOff[n] = int(params["{}_time_offset".format(n)])
             for i in range(8):
                 if "A{}_{}".format(i+1,n) in params.keys():
-                    self.satAmps[n][i] = [params["A{}_{}".format(i+1,n)]]*len(self.data)
+                    self.satAmps[n][i] = np.zeros(len(self.data)) + abs(params["A{}_{}".format(i+1,n)])
                 for j in range(len(self.data)):
                     if "A{}_{}_{}".format(i+1,n,j) in params.keys():
-                        self.satAmps[n][i][j] = params["A{}_{}_{}".format(i+1,n,j)]
+                        self.satAmps[n][i][j] = abs(params["A{}_{}_{}".format(i+1,n,j)])
         for n in self.astroNames:
             for i in range(8):
                 for j in range(len(self.data)):
                     if "A{}_{}_{}".format(i+1,n,j) in params.keys():
-                        self.astroAmps[n][i][j] = params["A{}_{}_{}".format(i+1,n,j)]
+                        self.astroAmps[n][i][j] = abs(params["A{}_{}_{}".format(i+1,n,j)])
         if 'freq' in params.keys():
             self.geometry.freq = params['freq']
         if 'airy' in params.keys():
@@ -244,6 +244,8 @@ class TheoryPredictor:
                 for j in range(len(self.data)):
                     params['A{}_{}_{}'.format(i+1,n,j)] = self.astroAmps[n][i][j]
         params['freq'] = self.geometry.freq
+        params['airy'] = self.geometry.ant_beam[0].airy
+        params['fix_amplitude'] = self.geometry.ant_beam[0].fixAmp
         params['time_offset_all'] = self.delay
         for i,ant_pos in enumerate(self.geometry.ant_pos):
             params['D{}_pos_x'.format(i+1)] = ant_pos[0]
@@ -301,13 +303,33 @@ class TheoryPredictor:
         out = np.array(out).flatten()
         return out/1e14
 
-    def showFit(self, channels = [], cut = [], mode = ''): #display graphs of fitted results
+    def showFit(self, channels = [], cut = [], mode = '', perSat=False): #display graphs of fitted results
         if channels == []:
             channels = self.channels
         if cut == []:
             cut = self.cut
         if mode == '':
             mode = self.mode
+        
+        if perSat: #Plot each satellite beam individually
+            sats = {}
+            satNames = self.satNames
+            for n in satNames:
+                self.satNames = {n}
+                SatOut = []
+                for ch in channels:
+                    for i,D in enumerate(self.data):
+                        prediction = self.output(ch, i)[cut[0]:cut[1]]
+                        if mode == 'amp':
+                            SatOut.append(abs(prediction))
+                        elif mode == 'phase':
+                            pphase = prediction * abs(data)/abs(prediction)
+                            SatOut.append(pphase)
+                        else:
+                            SatOut.append(prediction)
+                sats[n] = np.array(SatOut)
+            self.satNames = satNames
+        
         Dout = []
         Pout = []
         for ch in channels:
@@ -338,13 +360,19 @@ class TheoryPredictor:
             axes[1].plot(fit[i].imag,label='Fit')
             axes[1].text(0.45,1.05,'Imag', transform=axes[1].transAxes)
             
+            if perSat:
+                for n in sats.keys():
+                    if max(abs(sats[n][i])) > max(abs(fit[i]))/50:
+                        axes[0].plot(sats[n][i].real,label=n)
+                        axes[1].plot(sats[n][i].imag,label=n)
+            
             fig.text(0.85,1.1,'CH {} Fit - DataSet {} - [{}:{}]'.format(channels[i//len(self.data)], i%len(self.data), cut[0],cut[1]), transform=axes[0].transAxes)
             plt.legend()
             plt.show()
         
         return
     
-    def fit(self, names, channels = [11,12,13,14,22,23,24,33,34,44], cut = [0,-1], mode = '', datNum = [], pprint = True, plot = True, output=True):
+    def fit(self, names, channels = [11,12,13,14,22,23,24,33,34,44], cut = [0,-1], mode = '', datNum = [], pprint = True, plot = True, output=True): #Fits named parameters to data
         if cut[1] == -1:
             cut[1] = len(self.data[0][11])
         if datNum == []:
@@ -377,7 +405,7 @@ class TheoryPredictor:
             return params
         return
     
-    def sigSats(self, cut, thresh=0.01):
+    def sigSats(self, cut, thresh=0.04): #Gives set of satellites whose cos^2(ALT) passes below threshold
         if type(cut) == int:
             cut = [cut,cut+1]
         if len(cut)==1:
@@ -389,3 +417,15 @@ class TheoryPredictor:
                     if min(np.cos(s['alt'][cut[0]:cut[1]])**2)<thresh:
                         sats = sats | {n}
         return sats
+    
+    def trackPlot(self, cut=[0,-1], sats=[]): #Plots 2D path of satellites
+        if sats==[]:
+            sats = list(self.satNames)
+        for i,D in enumerate(self.data):
+            for n,s in zip(D.sat_id,D.sat):
+                if n in sats:
+                    plt.figure(figsize=(12,10))
+                    track = np.array([np.cos(s['alt'])*np.sin(s['az']),np.cos(s['alt'])*np.cos(s['az'])]).T + self.trackOff[n]
+                    plt.plot(track[cut[0]:cut[1],0],track[cut[0]:cut[1],1])
+                    plt.title('{} track : DataSet {}'.format(n,i))
+                    plt.show()
