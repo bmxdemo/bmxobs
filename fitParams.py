@@ -63,12 +63,12 @@ def getBeamFit(Theory):
         ch = channelSet[i]
         names = ['D{}_beam_center_x'.format(d),
                 'D{}_beam_center_y'.format(d),
-                'D{}_beam_sigma_x'.format(d),
-                'D{}_beam_sigma_y'.format(d),
                 'D{}_beam_smooth_x'.format(d),
                 'D{}_beam_smooth_y'.format(d)
                 ]
-
+        if Theory.geometry.ant_beam[d-1].airy:
+            names += ['D{}_beam_sigma_x'.format(d),
+                'D{}_beam_sigma_y'.format(d),]
 
         params = Theory.fit(names, mode = 'amp', channels = ch, plot=False, pprint=False)
         for n,p in zip(names,params):
