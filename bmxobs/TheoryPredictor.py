@@ -15,7 +15,9 @@ class TheoryPredictor:
             Data = [Data]
         self.data = copy.deepcopy(Data)
         self.geometry = copy.deepcopy(Geometry)
+        
         self.names = [] #names of parameters for dictionary input
+        self.parameterBounds = {} #dictionary of bounds for named parameters
         self.satNames = set()
         self.satAmps = {} #amplitude of signal from satellite
         self.offsets_r = []
@@ -92,9 +94,15 @@ class TheoryPredictor:
                         trackOff.append([0.,0.])
                         timeOff.append(0)
                         self.names += ['A{}_{}_{}'.format(j+1, n, i) for j in range(8)]
+                        for j in range(8):
+                            self.parameterBounds['A{}_{}_{}'.format(j+1, n, i)] = (0,np.sqrt(max(D[(j+1)*11]))*1.5)
                         self.names += ['{}_track_offset_x{}'.format(n,i),
                                       '{}_track_offset_y{}'.format(n,i),
                                       '{}_time_offset_{}'.format(n,i)]
+                        self.parameterBounds['{}_track_offset_x{}'.format(n,i)] = (-0.1,0.1)
+                        self.parameterBounds['{}_track_offset_y{}'.format(n,i)] = (-0.1,0.1)
+                        self.parameterBounds['{}_time_offset_{}'.format(n,i)] = (-100,100)
+                        
             for j,n in enumerate(astroNames):
                 names.append(n)
                 tracks.append(astroTracks[i][j])
@@ -102,9 +110,14 @@ class TheoryPredictor:
                 trackOff.append([0.,0.])
                 timeOff.append(0)
                 self.names += ['A{}_{}_{}'.format(j+1, n, i) for j in range(8)]
+                for j in range(8):
+                    self.parameterBounds['A{}_{}_{}'.format(j+1, n, i)] = (0,np.sqrt(max(D[(j+1)*11]))*1.5)
                 self.names += ['{}_track_offset_x{}'.format(n,i),
                               '{}_track_offset_y{}'.format(n,i),
                               '{}_time_offset_{}'.format(n,i)]
+                self.parameterBounds['{}_track_offset_x{}'.format(n,i)] = (-0.1,0.1)
+                self.parameterBounds['{}_track_offset_y{}'.format(n,i)] = (-0.1,0.1)
+                self.parameterBounds['{}_time_offset_{}'.format(n,i)] = (-100,100)
             self.satTracks.append(np.array(tracks))
             self.satNames.append(names)
             self.satAmps.append(np.array(amps))
@@ -113,10 +126,15 @@ class TheoryPredictor:
         
         self.names += ['freq','airy','fix_amplitude','time_offset_all','D_all_dist','beam_sigma','beam_sigma_x','beam_sigma_y','beam_smooth','beam_smooth_x','beam_smooth_y']
         
+        
         for i,ant_pos in enumerate(self.geometry.ant_pos):
             self.names += ['D{}_pos_x'.format(i+1),
                            'D{}_pos_y'.format(i+1)]
+            self.parameterBounds['D{}_pos_x'.format(i+1)] = (-10,10)
+            self.parameterBounds['D{}_pos_y'.format(i+1)] = (-10,10)
             self.names += ['D{}_phi_{}'.format(i+1,j) for j in range(len(self.data))]
+            for j in range(len(self.data)):
+                self.parameterBounds['D{}_phi_{}'.format(i+1,j)] = (-np.pi,np.pi)
             self.names +=['D{}_beam_center_x'.format(i+1),
                            'D{}_beam_center_y'.format(i+1),
                            'D{}_beam_sigma'.format(i+1),
@@ -125,11 +143,19 @@ class TheoryPredictor:
                            'D{}_beam_smooth'.format(i+1),
                            'D{}_beam_smooth_x'.format(i+1),
                            'D{}_beam_smooth_y'.format(i+1)]
+            self.parameterBounds['D{}_beam_center_x'.format(i+1)] = (-0.1,0.1)
+            self.parameterBounds['D{}_beam_center_y'.format(i+1)] = (-0.1,0.1)
+            self.parameterBounds['D{}_beam_sigma_x'.format(i+1)] = (0,0.5)
+            self.parameterBounds['D{}_beam_sigma_y'.format(i+1)] = (0,0.5)
+            self.parameterBounds['D{}_beam_smooth_x'.format(i+1)] = (0,0.5)
+            self.parameterBounds['D{}_beam_smooth_y'.format(i+1)] = (0,0.5)
                            
         for i in range(len(self.data)):
             for ch in [11,12,13,14,22,23,24,33,34,44,55,56,57,58,66,67,68,77,78,88]:
                 self.names.append('CH{}_offset_r{}'.format(ch, i))
                 self.names.append('CH{}_offset_i{}'.format(ch, i))
+                self.parameterBounds['CH{}_offset_r{}'.format(ch, i)] = (min(self.data[i][ch].real),max(self.data[i][ch].real))
+                self.parameterBounds['CH{}_offset_i{}'.format(ch, i)] = (min(self.data[i][ch].imag),max(self.data[i][ch].imag))
             
         self.var = [] #names of independent variables when fitting
         self.channels = [11,12,13,14,22,23,24,33,34,44] #channels for fit
@@ -144,11 +170,14 @@ class TheoryPredictor:
             
         #Find Noncorrelating Sources
         cor = self.satCorrelation()
-        remove = []
         for i,D in enumerate(self.data):
+            remove = []
             for j,n in enumerate(self.satNames[i]):
-                if cor['{}_{}'.format(n,i)] < max(cor.values) - 1e10:
+                if cor['{}_{}'.format(n,i)] < max(cor.values())/100:
                     remove.append(j)
+            self.satTracks[i] = np.delete(self.satTracks[i],remove,axis=0)
+            self.satNames[i] = np.delete(self.satNames[i],remove)
+            self.satAmps[i] = np.delete(self.satAmps[i],remove,axis=0)
     
     def astTrack(self, astro): #generates track for astronomical objects from RA and DEC
         if len(astro)>0:
@@ -423,14 +452,19 @@ class TheoryPredictor:
         self.datNum = datNum
         
         params = []
+        bounds_low = []
+        bounds_high = []
         state = self.readParameters()
         for n in self.var:
             params.append(state[n])
+            bounds_low.append(self.parameterBounds[n][0])
+            bounds_high.append(self.parameterBounds[n][1])
         params = np.array(params)
+        bounds = (bounds_low, bounds_high)
         
         self.fitTime = time.time()
         self.predictTime = 0
-        fit = least_squares(self.fitFunc,params)
+        fit = least_squares(self.fitFunc,params, bounds=bounds)
         self.fitTime = time.time()-self.fitTime
         print('{} of {} seconds spent in predictions'.format(self.predictTime, self.fitTime))
         
@@ -479,7 +513,7 @@ class TheoryPredictor:
                     plt.title('{} track : DataSet {}'.format(n,i))
                     plt.show()
                     
-    def satCorrelation(self, sats=[]):
+    def satCorrelation(self, sats=[]): #Attempting to measure correlation between satellite's predicted signal and data to know whether to include it or not
         allSats = False
         if sats==[]:
             allSats= True
@@ -487,7 +521,7 @@ class TheoryPredictor:
         for i,D in enumerate(self.data):
             for j,n in enumerate(self.satNames[i]):
                 if n in sats or allSats:
-                    Correlations['{}_{}'.format(n,i)] = sum([abs(sum((self.output(ch, i, sources=[j], amp=False)-self.offsets_r[i][ch] - self.offsets_i[i][ch]*1j)*(np.conj(D[ch])-self.offsets_r[i][ch] - self.offsets_i[i][ch]*1j))) for ch in [12,13,14,23,24,34,56,57,58,67,68,78]])
+                    Correlations['{}_{}'.format(n,i)] = sum([(sum((self.output(ch, i, sources=[j], amp=False)-self.offsets_r[i][ch] - self.offsets_i[i][ch]*1j)*(np.conj(D[ch])-self.offsets_r[i][ch] - self.offsets_i[i][ch]*1j))).real for ch in [12,13,14,23,24,34,56,57,58,67,68,78]])
         return Correlations
 
 @jit(nopython=True)

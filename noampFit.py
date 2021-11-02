@@ -25,9 +25,10 @@ def getNoAmpFit(Theory):
                     'D{}_beam_center_y'.format(d),
                     'D{}_beam_smooth_x'.format(d),
                     'D{}_beam_smooth_y'.format(d)]
-            names += ['D{}_pos_x'.format(d),
-                      'D{}_pos_y'.format(d)]
-            names += ['D{}_phi_{}'.format(d,j) for j in range(len(Theory.data))]
+            if d!= 1 and d!= 5:
+                names += ['D{}_pos_x'.format(d),
+                          'D{}_pos_y'.format(d)]
+                names += ['D{}_phi_{}'.format(d,j) for j in range(len(Theory.data))]
         TASKS.append((names, 'all', ch, list(range(len(Theory.data)))))
         
             
@@ -58,7 +59,7 @@ needAmp = False
 astroObj= {}
 
 if len(sys.argv)>2: # Load starting parameters from file named in 2nd argument
-    fileIn = 'fits/' + sys.argv[2]
+    fileIn = 'bmxobs/fits/' + sys.argv[2]
     f = open(fileIn,'r')
     startData = f.read()
     f.close()
@@ -90,7 +91,7 @@ print('Begin NoAmp Fit') #Fit Amplitudes
 print(getNoAmpFit(Theory))
     
 if len(sys.argv)>1: # Save end parameters to file named in 1st argument
-    fileOut = 'fits/' + sys.argv[1]
+    fileOut = 'bmxobs/fits/' + sys.argv[1]
     f = open(fileOut,'w')
     f.write('Data_ids = {}\n\nstartParams = {}\n\nbins = {}\n\nzeroSats = {}\n\nastroObj={}\n'.format(Data_ids, Theory.readParameters(), bins, zeroSats, astroObj))
     f.close()

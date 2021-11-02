@@ -72,7 +72,7 @@ needAmp = False
 astroObj= {}
 
 if len(sys.argv)>3: # Load starting parameters from file named in 2nd argument
-    fileIn = 'fits/' + sys.argv[3]
+    fileIn = 'bmxobs/fits/' + sys.argv[3]
     f = open(fileIn,'r')
     startData = f.read()
     f.close()
@@ -110,7 +110,7 @@ print('Begin Amp Fit') #Fit Amplitudes
 print(getAmpFit(Theory, mode))
     
 if len(sys.argv)>2: # Save end parameters to file named in 1st argument
-    fileOut = 'fits/' + sys.argv[2]
+    fileOut = 'bmxobs/fits/' + sys.argv[2]
     f = open(fileOut,'w')
     f.write('Data_ids = {}\n\nstartParams = {}\n\nbins = {}\n\nzeroSats = {}\n\nastroObj={}\n'.format(Data_ids, Theory.readParameters(), bins, zeroSats, astroObj))
     f.close()
