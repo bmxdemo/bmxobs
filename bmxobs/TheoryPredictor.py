@@ -487,7 +487,7 @@ class TheoryPredictor:
         for i,D in enumerate(self.data):
             for j,n in enumerate(self.satNames[i]):
                 if n in sats or allSats:
-                    Correlations['{}_{}'.format(n,i)] = sum([abs(sum((self.output(ch, i, sources=[j], amp=False)-self.offsets_r[j][ch] - self.offsets_i[j][ch]*1j)*(np.conj(D[ch])-self.offsets_r[j][ch] - self.offsets_i[j][ch]*1j))) for ch in [12,13,14,23,24,34,56,57,58,67,68,78]])
+                    Correlations['{}_{}'.format(n,i)] = sum([abs(sum((self.output(ch, i, sources=[j], amp=False)-self.offsets_r[i][ch] - self.offsets_i[i][ch]*1j)*(np.conj(D[ch])-self.offsets_r[i][ch] - self.offsets_i[i][ch]*1j))) for ch in [12,13,14,23,24,34,56,57,58,67,68,78]])
         return Correlations
 
 @jit(nopython=True)
