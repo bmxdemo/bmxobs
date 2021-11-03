@@ -63,6 +63,8 @@ if needAmp:
 print('Begin Big Fit') #Fit Amplitudes
 names = []
 detectors = [1,2,3,4,5,6,7,8]
+offsetReal = [11,12,13,14,22,23,24,33,34,44,55,56,57,58,66,67,68,77,78,88]
+offsetImag = [12,13,14,23,24,34,56,57,58,67,68,78]
 for d in detectors:
     names += ['D{}_beam_center_x'.format(d),
             'D{}_beam_center_y'.format(d),
@@ -74,6 +76,8 @@ for d in detectors:
         names += ['D{}_phi_{}'.format(d,j) for j in range(len(Theory.data))]
     for j in range(len(Theory.data)):
         names += ["A{}_{}_{}".format(d,n,j) for n in Theory.satNames[j]]
+        #names += ['CH{}_offset_r{}'.format(off,j) for off in offsetReal]
+        #names += ['CH{}_offset_i{}'.format(off,j) for off in offsetImag]
 Theory.fit(names)
     
 if len(sys.argv)>1: # Save end parameters to file named in 1st argument

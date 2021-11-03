@@ -8,9 +8,10 @@ import copy
 import time
 from numba import jit
 import multiprocessing
+from scipy.signal import find_peaks
 
 class TheoryPredictor:
-    def __init__(self, Data, Geometry, astroObj = {}, params = {}, satAmp = 0, satDelay = 0, thresh=0.04, astAmp = 0, zeroSats = []):
+    def __init__(self, Data, Geometry, astroObj = {}, params = {}, satAmp = 0, satDelay = 0, thresh=10, astAmp = 0, zeroSats = []):
         if type(Data) != list:
             Data = [Data]
         self.data = copy.deepcopy(Data)
@@ -79,15 +80,23 @@ class TheoryPredictor:
         self.satAmps = []
         self.trackOff = []
         self.timeOff = []
+        self.satCuts = []
         for i,D in enumerate(self.data):
             tracks = []
             names = []
             amps = []
             trackOff = []
             timeOff = []
+            cuts = []
             for n,s in zip(D.sat_id,D.sat):
                 if "COS" not in n and n not in zeroSats:
-                    if min(np.cos(D.sat[i]['alt'])**2)<thresh:
+                    cos2 = np.cos(s['alt'])**(-2)
+                    peaks = find_peaks(cos2,height=thresh)[0]
+                    foundPeaks = []
+                    for p in peaks:
+                        if abs(D[12][p])>max(abs(D[12]))/1e3:
+                            foundPeaks.append(p)
+                    if len(foundPeaks)>0:
                         names.append(n)
                         tracks.append(np.array([np.cos(s['alt'])*np.sin(s['az']),np.cos(s['alt'])*np.cos(s['az'])]).T)
                         amps.append(np.zeros(8) + satAmp)
@@ -102,27 +111,37 @@ class TheoryPredictor:
                         self.parameterBounds['{}_track_offset_x{}'.format(n,i)] = (-0.1,0.1)
                         self.parameterBounds['{}_track_offset_y{}'.format(n,i)] = (-0.1,0.1)
                         self.parameterBounds['{}_time_offset_{}'.format(n,i)] = (-100,100)
+                        for p in foundPeaks:
+                            cuts.append([min(p-200,0),max(p+200,len(D[12]))])
                         
             for j,n in enumerate(astroNames):
-                names.append(n)
-                tracks.append(astroTracks[i][j])
-                amps.append(np.zeros(8) + astAmp)
-                trackOff.append([0.,0.])
-                timeOff.append(0)
-                self.names += ['A{}_{}_{}'.format(j+1, n, i) for j in range(8)]
-                for j in range(8):
-                    self.parameterBounds['A{}_{}_{}'.format(j+1, n, i)] = (0,np.sqrt(max(D[(j+1)*11]))*1.5)
-                self.names += ['{}_track_offset_x{}'.format(n,i),
-                              '{}_track_offset_y{}'.format(n,i),
-                              '{}_time_offset_{}'.format(n,i)]
-                self.parameterBounds['{}_track_offset_x{}'.format(n,i)] = (-0.1,0.1)
-                self.parameterBounds['{}_track_offset_y{}'.format(n,i)] = (-0.1,0.1)
-                self.parameterBounds['{}_time_offset_{}'.format(n,i)] = (-100,100)
+                track = astroTracks[i][j]
+                cos2 = ((track**2).sum(axis=-1))**(-1)
+                peaks = find_peaks(cos2,height=thresh)[0]
+                if len(peaks)>0:
+                    names.append(n)
+                    tracks.append(track)
+                    amps.append(np.zeros(8) + astAmp)
+                    trackOff.append([0.,0.])
+                    timeOff.append(0)
+                    self.names += ['A{}_{}_{}'.format(j+1, n, i) for j in range(8)]
+                    for j in range(8):
+                        self.parameterBounds['A{}_{}_{}'.format(j+1, n, i)] = (0,np.sqrt(max(D[(j+1)*11]))*1.5)
+                    self.names += ['{}_track_offset_x{}'.format(n,i),
+                                  '{}_track_offset_y{}'.format(n,i),
+                                  '{}_time_offset_{}'.format(n,i)]
+                    self.parameterBounds['{}_track_offset_x{}'.format(n,i)] = (-0.1,0.1)
+                    self.parameterBounds['{}_track_offset_y{}'.format(n,i)] = (-0.1,0.1)
+                    self.parameterBounds['{}_time_offset_{}'.format(n,i)] = (-100,100)
+                    for p in peaks:
+                        cuts.append([max(p-200,0),min(p+200,len(D[12]))])
+                
             self.satTracks.append(np.array(tracks))
             self.satNames.append(names)
             self.satAmps.append(np.array(amps))
             self.trackOff.append(np.array(trackOff))
             self.timeOff.append(np.array(timeOff))
+            self.satCuts.append(np.array(cuts))
         
         self.names += ['freq','airy','fix_amplitude','time_offset_all','D_all_dist','beam_sigma','beam_sigma_x','beam_sigma_y','beam_smooth','beam_smooth_x','beam_smooth_y']
         
@@ -145,10 +164,10 @@ class TheoryPredictor:
                            'D{}_beam_smooth_y'.format(i+1)]
             self.parameterBounds['D{}_beam_center_x'.format(i+1)] = (-0.1,0.1)
             self.parameterBounds['D{}_beam_center_y'.format(i+1)] = (-0.1,0.1)
-            self.parameterBounds['D{}_beam_sigma_x'.format(i+1)] = (0,0.5)
-            self.parameterBounds['D{}_beam_sigma_y'.format(i+1)] = (0,0.5)
-            self.parameterBounds['D{}_beam_smooth_x'.format(i+1)] = (0,0.5)
-            self.parameterBounds['D{}_beam_smooth_y'.format(i+1)] = (0,0.5)
+            self.parameterBounds['D{}_beam_sigma_x'.format(i+1)] = (0.01,0.5)
+            self.parameterBounds['D{}_beam_sigma_y'.format(i+1)] = (0.01,0.5)
+            self.parameterBounds['D{}_beam_smooth_x'.format(i+1)] = (0.01,0.5)
+            self.parameterBounds['D{}_beam_smooth_y'.format(i+1)] = (0.01,0.5)
                            
         for i in range(len(self.data)):
             for ch in [11,12,13,14,22,23,24,33,34,44,55,56,57,58,66,67,68,77,78,88]:
@@ -162,6 +181,7 @@ class TheoryPredictor:
         self.cut = [0,len(self.data[0][11])] #cut of dataset when fitting
         self.mode = '' #mode for fitting ('amp' for Amplitude, 'phase' for Phase)
         self.datNum = list(range(len(self.data))) #datasets actively being used in fitting
+        self.useCuts = True #cut data into significant sections, or use whole data?
         
         self.predictTime = 0
         
@@ -364,8 +384,19 @@ class TheoryPredictor:
     def parallelOutput(self, args):
         ch,i = args[0],args[1]
         out = np.array([])
-        prediction = self.output(ch, i)[self.cut[0]:self.cut[1]]
-        data = self.data[i][ch][self.cut[0]:self.cut[1]]
+        if self.useCuts: #Cut data into regions surrounding satellites
+            pred = self.output(ch, i)
+            dat = self.data[i][ch]
+            cuts = self.satCuts[i]
+            prediction = np.array([])
+            data = np.array([])
+            for c in cuts:
+                scale = max(abs(dat[c[0]:c[1]]))
+                prediction = np.append(prediction,pred[c[0]:c[1]]/scale)
+                data = np.append(data,dat[c[0]:c[1]]/scale)
+        else:
+            prediction = self.output(ch, i)[self.cut[0]:self.cut[1]]
+            data = self.data[i][ch][self.cut[0]:self.cut[1]]
         if self.mode == 'amp':
             out = np.append(out, abs(data)-abs(prediction))
         elif self.mode == 'phase':
