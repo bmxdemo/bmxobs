@@ -12,17 +12,24 @@ from scipy.signal import find_peaks
 
 class TheoryPredictor:
     def __init__(self, Data, Geometry, astroObj = {}, params = {}, satAmp = 0, satDelay = 0, thresh=10, astAmp = 0, zeroSats = []):
+        #Data: BMXSingleFreqObs object
+        #Geometry: SingleFreqGeometry object
+        #astroObj: dictionary with format {'[Astronomical Source Name]': (RA, DEC)}
+        #params: dictionary with format {'[Paramter]': value}; starting values of fit parameters
+        #satAmp: int or float; satellites will be set to this amplitude by default
+        #satDelay: int; shifts satellite tracks in time by this many samples, I don't really use this anymore.
+        #thresh: int or float; satellites will be excluded from fitting if cos(altitude)^(-2) doesn't go below this threshhold.
+        #astAmp: int or float; astronomical objects will be set to this amplitude by default
+        #zeroSats: 1D list of strings; any satellites named in this will be ignored by TheoryPredictor
         if type(Data) != list:
             Data = [Data]
-        self.data = copy.deepcopy(Data)
-        self.geometry = copy.deepcopy(Geometry)
+        self.data = copy.deepcopy(Data) #copy of Data
+        self.geometry = copy.deepcopy(Geometry) #copy of Geometry
         
-        self.names = [] #names of parameters for dictionary input
-        self.parameterBounds = {} #dictionary of bounds for named parameters
-        self.satNames = set()
-        self.satAmps = {} #amplitude of signal from satellite
-        self.offsets_r = []
-        self.offsets_i = []
+        self.names = [] #1D list of strings; names of parameters for dictionary input
+        self.parameterBounds = {} #dictionary with format {'[parameter]': (low_bound, high_bound)}; dictionary of bounds for named parameters
+        self.offsets_r = [] #list of dictionaries with format {int channel: int or float}; offset added to signal, organized first by dataset and then by channel 
+        self.offsets_i = [] #same as above, but is multiplied by 1j when added to signal
         for i in range(len(self.data)):
             self.offsets_r.append({
                 11:sum(self.data[i][11]-abs(self.data[i][12])*abs(self.data[i][13])/abs(self.data[i][23]))/len(self.data[i][11]),
@@ -75,12 +82,12 @@ class TheoryPredictor:
         astroNames = list(astroObj.keys()) #Names of astronomical objects included in the fit
         astroTracks = self.astTrack(np.array([astroObj[n] for n in astroNames])) #tracks of astronomical objects for each data set
         
-        self.satTracks = []
-        self.satNames = []
-        self.satAmps = []
-        self.trackOff = []
-        self.timeOff = []
-        self.weight = []
+        self.satTracks = [] #list of numpy arrays, shape (len(self.data), number of singal sources, number of samples in data, 2)
+        self.satNames = [] #2D list of strings, shape (len(self.data), number of singal sources); names of satellites and astroObjs
+        self.satAmps = [] #list of numpy arrays, shape (len(self.data), number of signal sources, number of detectors)
+        self.trackOff = [] #I don't really use this anymore
+        self.timeOff = [] #same here; not important
+        self.weight = [] #list of dictionaries, shape (len(self.data)), format {int channel: numpy float array shape (number of samples in data)}
         for i,D in enumerate(self.data):
             tracks = []
             names = []
@@ -187,9 +194,9 @@ class TheoryPredictor:
         self.mode = '' #mode for fitting ('amp' for Amplitude, 'phase' for Phase)
         self.datNum = list(range(len(self.data))) #datasets actively being used in fitting
         
-        self.predictTime = 0
+        self.predictTime = 0 #float for keeping track of time spent running fit
         
-        if params != {}:
+        if params != {}: #Give parameters their designated starting value
             self.setParameters(params)
             
         #Find Noncorrelating Sources
@@ -204,6 +211,7 @@ class TheoryPredictor:
             #self.satAmps[i] = np.delete(self.satAmps[i],remove,axis=0)
     
     def astTrack(self, astro): #generates track for astronomical objects from RA and DEC
+        #astro: 2D numpy float array of shape (number of astroObjs, 2); organized by object number, then by 0:RA, 1:DEC
         if len(astro)>0:
             track = []
             RA, DEC = astro[:,0], astro[:,1]
@@ -218,7 +226,7 @@ class TheoryPredictor:
                     AZ = np.arccos(a) * (2*(np.sin(HA)<0)-1)
                     t.append(np.moveaxis(np.array([np.cos(ALT)*np.sin(AZ),np.cos(ALT)*np.cos(AZ)]),0,-1))
                 track.append(t)
-            return np.array(track)
+            return np.array(track) #numpy array of shape (len(self.data), number of astroObjs, 2); tracks of the locations of the astroObjs across the sky for each day of data.
         else:
             return np.array([])
     
@@ -226,6 +234,7 @@ class TheoryPredictor:
         return self.names
     
     def setParameters(self, params): #set parameter values with dicitonary
+        #params: dictionary with format {'[Parameter]': value}
         for i,names in enumerate(self.satNames):
             for j,n in enumerate(names):
                 if "{}_track_offset_x{}".format(n,i) in params.keys():
@@ -338,9 +347,13 @@ class TheoryPredictor:
             for ch in [11,12,13,14,22,23,24,33,34,44,55,56,57,58,66,67,68,77,78,88]:
                 params['CH{}_offset_r{}'.format(ch,i)] = self.offsets_r[i][ch]
                 params['CH{}_offset_i{}'.format(ch,i)] = self.offsets_i[i][ch]
-        return params
+        return params #dictionary with format {'[Parameter]': value}
     
     def output(self, channel, datNum, sources = [], amp = True): #return theory predictions
+        #channel: int
+        #datNum: int; index of data, indicating for which day of data to make predictions
+        #sources: list of ints; indices of satellites to be used in making prediction; all satellites will be used if blank
+        #amp: bool; Use satAmps to calculate the amplitude, or set all amplitudes to a fixed value
         if sources == []:
             sources = list(range(len(self.satNames[datNum])))
         if amp:
@@ -349,16 +362,17 @@ class TheoryPredictor:
             A = 1e14
         satOut = self.geometry.point_source(channel, 1, self.satTracks[datNum][sources], datNum) * A
         signal = satOut.sum(axis=0) + self.offsets_r[datNum][channel] + self.offsets_i[datNum][channel]*1j
-        return signal
+        return signal #complex numpy array of shape (number of data samples)
         
     def fitFunc(self, params): #parameterized function used in fitting
+        #params: 1D float array; incoming parameter values from least_squares function
         t=time.time()
         p = {}
-        for i,n in enumerate(self.var):
+        for i,n in enumerate(self.var): #match params to parameter names and update their values in TheoryPredictor
             p[n] = params[i]
         self.setParameters(p)
         
-        out = np.array([])
+        out = np.array([]) #1D array of floats
         for ch in self.channels:
             for i in self.datNum:
                 prediction = (self.output(ch, i)*self.weight[i][ch])[self.cut[0]:self.cut[1]]
@@ -377,6 +391,10 @@ class TheoryPredictor:
         return out
 
     def showFit(self, channels = [], cut = [], mode = '', perSat=False): #display graphs of fitted results
+        #channels: list of ints; channels to be displayed; shows all channels if empty
+        #cut: list of two ints; start and end indices of data/fit to be displayed
+        #mode: string; 'phase' makes predictions match data's amplitude, 'amp' displays only magnitude of data and predictions.  Anything else makes it display normally
+        #perSat: boolean; if True, displays each satellite's signal individually
         if channels == []:
             channels = self.channels
         if cut == []:
@@ -440,6 +458,14 @@ class TheoryPredictor:
         return
     
     def fit(self, names, mode = 'all', channels = [11,12,13,14,22,23,24,33,34,44,55,56,57,58,66,67,68,77,78,88], datNum = [], cut = [0,-1], pprint = False, plot = False, output=True): #Fits named parameters to data
+        #names: list of strings; names of parameters to be fit
+        #mode: string; 'phase' makes predictions match data magnitude, 'amp' takes magnitude of data and predictions before subtracting, any thing else makes it run normally
+        #channels: list of ints; data channels to be fit
+        #datNum: list of ints; indices of data sets to be fit
+        #cut: list of two ints; start and end indices in time (samples)
+        #pprint: boolean; print fit results at the end?
+        #plot: boolean; plot fit results at the end?
+        #output: boolean; return fit results?
         if cut[1] == -1:
             cut[1] = len(self.data[0][11])
         if datNum == []:
@@ -483,12 +509,15 @@ class TheoryPredictor:
         return
     
     def fit_parallel(self, params):
-        print('Start {}'.format(params[2]))
-        p = self.fit(params[0],mode=params[1],channels=params[2],datNum=params[3])
-        print('End {}'.format(params[2]))
+        #params: tuple of parameters for the fit function above
+        print('Start {}, {}, [{}:{}]'.format(params[2],params[3],params[4][0],params[4][1]))
+        p = self.fit(params[0],mode=params[1],channels=params[2],datNum=params[3],cut=params[4])
+        print('End {}, {}, [{}:{}]'.format(params[2],params[3],params[4][0],params[4][1]))
         return p
     
     def sigSats(self, cut, thresh=0.04): #Gives set of satellites whose cos^2(ALT) passes below threshold
+        #cut: list of two ints; indices for start and end of cut
+        #thresh: float; satellites are significant if cos(altitude)^2 passes below threshhold
         if type(cut) == int:
             cut = [cut,cut+1]
         if len(cut)==1:
@@ -502,6 +531,8 @@ class TheoryPredictor:
         return sats
     
     def trackPlot(self, cut=[0,-1], sats=[]): #Plots 2D path of satellites
+        #cut: list of two ints
+        #sats: list of strings: names of satellites to plot
         if sats==[]:
             sats = list(self.satNames)
         for i,D in enumerate(self.data):
@@ -513,6 +544,7 @@ class TheoryPredictor:
                     plt.show()
                     
     def satCorrelation(self, sats=[]): #Attempting to measure correlation between satellite's predicted signal and data to know whether to include it or not
+        #sats: list of strings: names of satellites to use
         allSats = False
         if sats==[]:
             allSats= True
@@ -523,9 +555,30 @@ class TheoryPredictor:
                     Correlations['{}_{}'.format(n,i)] = sum([(sum((self.output(ch, i, sources=[j], amp=False)-self.offsets_r[i][ch] - self.offsets_i[i][ch]*1j)*(np.conj(D[ch])-self.offsets_r[i][ch] - self.offsets_i[i][ch]*1j))).real for ch in [12,13,14,23,24,34,56,57,58,67,68,78]])
         return Correlations
     
-    def findCuts(self, thresh=0.01): #Find optimal cuts for separately fitting satellite amplitudes
-        for i,n in enumerate(self.satNames):
-            n
+    def findCuts(self, thresh=0.03): #Find optimal cuts for separately fitting satellite amplitudes
+        #thresh: float; a satellite's signal is present if cos(altitude)^2 <= thresh
+        Cuts = []
+        Sats = []
+        for i in range(len(self.data)):
+            cos2 = (self.satTracks[i]**2).sum(axis=-1)
+            inCut = cos2 <= thresh
+            anyInCut = inCut.any(axis=0)
+            cutStart = np.arange(len(anyInCut))[1:][np.all([np.invert(anyInCut[:-1]), anyInCut[1:]],axis=0)]
+            cutEnd = np.arange(len(anyInCut))[1:][np.all([anyInCut[:-1], np.invert(anyInCut[1:])],axis=0)]
+            if anyInCut[0] == True:
+                cutStart = np.insert(cutStart,0,0)
+            if anyInCut[-1] == True:
+                cutEnd = np.insert(cutEnd,-1,len(anyInCut))
+            cuts = [[s,e] for s,e in zip(cutStart,cutEnd)]
+            sats = []
+            for j,cut in enumerate(cuts):
+                sats.append([])
+                for k,n in enumerate(self.satNames[i]):
+                    if np.any(inCut[k][cut[0]:cut[1]]):
+                        sats[j].append(n)
+            Cuts.append(cuts)
+            Sats.append(sats)
+        return Cuts, Sats
 
 @jit(nopython=True)
 def ant_beam(track, center, smooth2):

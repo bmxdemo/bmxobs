@@ -21,17 +21,20 @@ def getAmpFit(Theory, mode):
     
     paramsOut = {}
     
+    cuts,sats = Theory.findCuts()
+    
     TASKS = []
     for i,detectors in enumerate(detectorSet):
         ch = channelSet[i]
         for j in range(len(Theory.data)):
-            names = []
-            for d in detectors:
-                names += ["A{}_{}_{}".format(d,n,j) for n in Theory.satNames[j]]
-            names += ['CH{}_offset_r{}'.format(off,j) for off in offsetReal[i]]
-            if mode != 'amp':
-                names += ['CH{}_offset_i{}'.format(off,j) for off in offsetImag[i]]
-            TASKS.append((names, mode, ch, [j]))
+            for k,cut in enumerate(cuts[j]):
+                names = []
+                for d in detectors:
+                    names += ["A{}_{}_{}".format(d,n,j) for n in sats[j][k]]
+                #names += ['CH{}_offset_r{}'.format(off,j) for off in offsetReal[i]]
+                #if mode != 'amp':
+                    #names += ['CH{}_offset_i{}'.format(off,j) for off in offsetImag[i]]
+                TASKS.append((names, mode, ch, [j], cut))
             
     with multiprocessing.Pool(len(TASKS)) as pool:
         imap_it = pool.imap(Theory.fit_parallel, TASKS)
