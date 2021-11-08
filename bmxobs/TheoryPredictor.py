@@ -80,14 +80,17 @@ class TheoryPredictor:
         self.satAmps = []
         self.trackOff = []
         self.timeOff = []
-        self.satCuts = []
+        self.weight = []
         for i,D in enumerate(self.data):
             tracks = []
             names = []
             amps = []
             trackOff = []
             timeOff = []
-            cuts = []
+            weightCH = {}
+            channels = [11,12,13,14,22,23,24,33,34,44,55,56,57,58,66,67,68,77,78,88]
+            for ch in channels:
+                weightCH[ch] = np.zeros(len(D[ch]))
             for n,s in zip(D.sat_id,D.sat):
                 if "COS" not in n and n not in zeroSats:
                     cos2 = np.cos(s['alt'])**(-2)
@@ -112,7 +115,8 @@ class TheoryPredictor:
                         self.parameterBounds['{}_track_offset_y{}'.format(n,i)] = (-0.1,0.1)
                         self.parameterBounds['{}_time_offset_{}'.format(n,i)] = (-100,100)
                         for p in foundPeaks:
-                            cuts.append([min(p-200,0),max(p+200,len(D[12]))])
+                            for ch in channels:
+                                weightCH[ch][max(p-200,0):min(p+200,len(D[ch]))] += 1/max(abs(D[ch])[max(p-200,0):min(p+200,len(D[ch]))])
                         
             for j,n in enumerate(astroNames):
                 track = astroTracks[i][j]
@@ -134,14 +138,15 @@ class TheoryPredictor:
                     self.parameterBounds['{}_track_offset_y{}'.format(n,i)] = (-0.1,0.1)
                     self.parameterBounds['{}_time_offset_{}'.format(n,i)] = (-100,100)
                     for p in peaks:
-                        cuts.append([max(p-200,0),min(p+200,len(D[12]))])
+                        for ch in channels:
+                            weightCH[ch][max(p-200,0):min(p+200,len(D[ch]))] += 1/max(abs(D[ch])[max(p-200,0):min(p+200,len(D[ch]))])
                 
             self.satTracks.append(np.array(tracks))
             self.satNames.append(names)
             self.satAmps.append(np.array(amps))
             self.trackOff.append(np.array(trackOff))
             self.timeOff.append(np.array(timeOff))
-            self.satCuts.append(np.array(cuts))
+            self.weight.append(weightCH)
         
         self.names += ['freq','airy','fix_amplitude','time_offset_all','D_all_dist','beam_sigma','beam_sigma_x','beam_sigma_y','beam_smooth','beam_smooth_x','beam_smooth_y']
         
@@ -181,7 +186,6 @@ class TheoryPredictor:
         self.cut = [0,len(self.data[0][11])] #cut of dataset when fitting
         self.mode = '' #mode for fitting ('amp' for Amplitude, 'phase' for Phase)
         self.datNum = list(range(len(self.data))) #datasets actively being used in fitting
-        self.useCuts = True #cut data into significant sections, or use whole data?
         
         self.predictTime = 0
         
@@ -189,15 +193,15 @@ class TheoryPredictor:
             self.setParameters(params)
             
         #Find Noncorrelating Sources
-        cor = self.satCorrelation()
-        for i,D in enumerate(self.data):
-            remove = []
-            for j,n in enumerate(self.satNames[i]):
-                if cor['{}_{}'.format(n,i)] < max(cor.values())/100:
-                    remove.append(j)
-            self.satTracks[i] = np.delete(self.satTracks[i],remove,axis=0)
-            self.satNames[i] = np.delete(self.satNames[i],remove)
-            self.satAmps[i] = np.delete(self.satAmps[i],remove,axis=0)
+        #cor = self.satCorrelation()
+        #for i,D in enumerate(self.data):
+            #remove = []
+            #for j,n in enumerate(self.satNames[i]):
+                #if cor['{}_{}'.format(n,i)] < max(cor.values())/100:
+                    #remove.append(j)
+            #self.satTracks[i] = np.delete(self.satTracks[i],remove,axis=0)
+            #self.satNames[i] = np.delete(self.satNames[i],remove)
+            #self.satAmps[i] = np.delete(self.satAmps[i],remove,axis=0)
     
     def astTrack(self, astro): #generates track for astronomical objects from RA and DEC
         if len(astro)>0:
@@ -210,9 +214,9 @@ class TheoryPredictor:
                     ALT = np.arcsin(np.sin(dec)*np.sin(D.dec)+np.cos(dec)*np.cos(D.dec)*np.cos(HA))
                     a = (np.sin(dec) - np.sin(ALT)*np.sin(D.dec))/(np.cos(ALT)*np.cos(D.dec))
                     a[a>1] = 1
-                    a[a<1] = -1
-                    AZ = np.arccos(a) + np.pi*(np.sin(HA)<0) #* (2*(np.sin(HA)>0)-1)
-                    t.append(np.moveaxis(np.array([np.cos(ALT)*np.cos(AZ),np.cos(ALT)*np.sin(AZ)]),0,-1))
+                    a[a<-1] = -1
+                    AZ = np.arccos(a) * (2*(np.sin(HA)<0)-1)
+                    t.append(np.moveaxis(np.array([np.cos(ALT)*np.sin(AZ),np.cos(ALT)*np.cos(AZ)]),0,-1))
                 track.append(t)
             return np.array(track)
         else:
@@ -353,59 +357,23 @@ class TheoryPredictor:
         for i,n in enumerate(self.var):
             p[n] = params[i]
         self.setParameters(p)
-        #centers = np.array([beam.center for beam in self.geometry.ant_beam])
-        #smooth2s = np.array([beam.smooth2 for beam in self.geometry.ant_beam])
-        #Data = np.array([[self.data[i][ch] for ch in self.channels] for i in self.datNum])
-        #offsets_r = np.array([[self.offsets_r[i][ch] for ch in self.channels] for i in self.datNum])
-        #offsets_i = np.array([[self.offsets_i[i][ch] for ch in self.channels] for i in self.datNum])
         
-        #out = fitFunc(self.channels, self.datNum, self.mode, self.cut, Data, self.satTracks, self.geometry.ant_pos, centers, smooth2s, self.geometry.phi, self.geometry.freq, offsets_r, offsets_i, self.satAmps)
-        
-        TASKS = []
+        out = np.array([])
         for ch in self.channels:
             for i in self.datNum:
-                TASKS.append((ch,i))
-                
-        out = np.array([])
-        for x in TASKS:
-            out = np.append(out,self.parallelOutput(x))
-        
-        #if len(TASKS)>1:
-            #with multiprocessing.Pool(len(TASKS)) as pool:
-                #imap_it = pool.imap_unordered(self.parallelOutput, TASKS)
-                #for i,x in enumerate(imap_it):
-                    #out = np.append(out,x)
-        #else:
-            #out = np.append(out,self.parallelOutput(TASKS[0]))
+                prediction = (self.output(ch, i)*self.weight[i][ch])[self.cut[0]:self.cut[1]]
+                data = (self.data[i][ch]*self.weight[i][ch])[self.cut[0]:self.cut[1]]
+                if self.mode == 'amp':
+                    out = np.append(out, abs(data)-abs(prediction))
+                elif self.mode == 'phase':
+                    pphase = prediction * abs(data)/np.maximum(abs(prediction),1e-20)
+                    out = np.append(out, data.real-pphase.real)
+                    out = np.append(out, data.imag-pphase.imag)
+                else:
+                    out = np.append(out, data.real-prediction.real)
+                    out = np.append(out, data.imag-prediction.imag)
         
         self.predictTime += time.time()-t
-        return out
-    
-    def parallelOutput(self, args):
-        ch,i = args[0],args[1]
-        out = np.array([])
-        if self.useCuts: #Cut data into regions surrounding satellites
-            pred = self.output(ch, i)
-            dat = self.data[i][ch]
-            cuts = self.satCuts[i]
-            prediction = np.array([])
-            data = np.array([])
-            for c in cuts:
-                scale = max(abs(dat[c[0]:c[1]]))
-                prediction = np.append(prediction,pred[c[0]:c[1]]/scale)
-                data = np.append(data,dat[c[0]:c[1]]/scale)
-        else:
-            prediction = self.output(ch, i)[self.cut[0]:self.cut[1]]
-            data = self.data[i][ch][self.cut[0]:self.cut[1]]
-        if self.mode == 'amp':
-            out = np.append(out, abs(data)-abs(prediction))
-        elif self.mode == 'phase':
-            pphase = prediction * abs(data)/np.maximum(abs(prediction),1e-20)
-            out = np.append(out, data.real-pphase.real)
-            out = np.append(out, data.imag-pphase.imag)
-        else:
-            out = np.append(out, data.real-prediction.real)
-            out = np.append(out, data.imag-prediction.imag)
         return out
 
     def showFit(self, channels = [], cut = [], mode = '', perSat=False): #display graphs of fitted results
@@ -427,7 +395,7 @@ class TheoryPredictor:
                             SatOut[n] = abs(prediction)
                         else:
                             SatOut[n] = prediction
-                sats.append(SatOut)
+                    sats.append(SatOut)
         
         Dout = []
         Pout = []
@@ -487,9 +455,9 @@ class TheoryPredictor:
         bounds_high = []
         state = self.readParameters()
         for n in self.var:
-            params.append(state[n])
             bounds_low.append(self.parameterBounds[n][0])
             bounds_high.append(self.parameterBounds[n][1])
+            params.append(min(max(state[n],bounds_low[-1]),bounds_high[-1]))
         params = np.array(params)
         bounds = (bounds_low, bounds_high)
         
@@ -554,6 +522,10 @@ class TheoryPredictor:
                 if n in sats or allSats:
                     Correlations['{}_{}'.format(n,i)] = sum([(sum((self.output(ch, i, sources=[j], amp=False)-self.offsets_r[i][ch] - self.offsets_i[i][ch]*1j)*(np.conj(D[ch])-self.offsets_r[i][ch] - self.offsets_i[i][ch]*1j))).real for ch in [12,13,14,23,24,34,56,57,58,67,68,78]])
         return Correlations
+    
+    def findCuts(self, thresh=0.01): #Find optimal cuts for separately fitting satellite amplitudes
+        for i,n in enumerate(self.satNames):
+            n
 
 @jit(nopython=True)
 def ant_beam(track, center, smooth2):

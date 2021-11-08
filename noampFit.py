@@ -42,6 +42,8 @@ def getNoAmpFit(Theory):
                 paramsOut[n] = p
                 
     Theory.setParameters(paramsOut)
+    
+    return paramsOut
 
 def approxPeaks(Theory, width=100):
     for i,D in enumerate(Theory.data):
