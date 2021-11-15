@@ -29,7 +29,7 @@ def getNoAmpFit(Theory):
                 names += ['D{}_pos_x'.format(d),
                           'D{}_pos_y'.format(d)]
                 names += ['D{}_phi_{}'.format(d,j) for j in range(len(Theory.data))]
-        TASKS.append((names, 'all', ch, list(range(len(Theory.data)))))
+        TASKS.append((names, 'all', ch, list(range(len(Theory.data))), [0,-1]))
         
             
     with multiprocessing.Pool(len(TASKS)) as pool:

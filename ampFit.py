@@ -36,7 +36,7 @@ def getAmpFit(Theory, mode):
                     #names += ['CH{}_offset_i{}'.format(off,j) for off in offsetImag[i]]
                 TASKS.append((names, mode, ch, [j], cut))
             
-    with multiprocessing.Pool(len(TASKS)) as pool:
+    with multiprocessing.Pool(min(len(TASKS),50)) as pool:
         imap_it = pool.imap(Theory.fit_parallel, TASKS)
         paramsOut = {}
         
@@ -44,6 +44,7 @@ def getAmpFit(Theory, mode):
         for i,x in enumerate(imap_it):
             for n,p in zip(TASKS[i][0],x):
                 paramsOut[n] = p
+            print(paramsOut)
                 
     Theory.setParameters(paramsOut)
                 

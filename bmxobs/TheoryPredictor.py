@@ -568,7 +568,7 @@ class TheoryPredictor:
             if anyInCut[0] == True:
                 cutStart = np.insert(cutStart,0,0)
             if anyInCut[-1] == True:
-                cutEnd = np.insert(cutEnd,-1,len(anyInCut))
+                cutEnd = np.append(cutEnd,-1)
             cuts = [[s,e] for s,e in zip(cutStart,cutEnd)]
             sats = []
             for j,cut in enumerate(cuts):
