@@ -23,7 +23,7 @@ towards1.ipynb:  This was ultimately a mess-around notebook, there's likely not 
 
 
 
-Important Funcitons:
+Important Functions:
 
 SingleFreqGeometry.py:
     point_source(self, channel, A, track, datNum) - returns the theoretical signal detected in a given channel.  track is an array of coordinates in
