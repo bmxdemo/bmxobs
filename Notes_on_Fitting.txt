@@ -1,0 +1,51 @@
+// This document was written by Walter Cook on 12/17/2021 to outline the functions of programs found in this folder
+
+The purposes of most of the programs found here (at least the ones written by me) are to create a theoretical model for a single frequency of BMX observations.  This works with a chain of imports, which each subsequent program calling on the previous ones as follows:
+
+bmxobs/bmxobs.py: produces the base datasets across all frequencies in the class BMXObs
+
+bmxobs/BMXSingleFreqObs.py: uses BMXObs to create new class BMXSingleFreqObs with no frequency dimension
+
+bmxobs/SingleFreqGeometry.py:  Produces theoretical signal from BMX geometry parameters and tracks for radio sources.
+
+bmxobs/TheoryPredictor.py:  Takes BMXSingleFreqObs data and a SingleFreqGeometry on initialization and uses satellite navigation data from BMXSingleFreqObs to get output from SingleFreqGeometry.  It then also has functions to change SingleFreqGeometry parameters and fit its output to data.
+
+bigFit.py; ampFit.py; geometryFit.py:  Loads a dataset using information from a file in the fits folder, then calls the TheoryPredictor fit function for a given set of parameters.  bigFit.py fits all parameters, ampFit.py fits the amplitudes of radio sources, and geometryFit.py fits SingleFreqGeometry parameters.  The resulting fits are then stored again in the fits folder.
+
+fitViewer.ipynb:  Loads BMXSIngleFreqObs data and a TheoryPredictor setup from a file in the fits folder and then calls the TheoryPredictor showFit function, producing graphs of TheoryPredictor's output compared to the dataset.
+
+towards1.ipynb:  This was ultimately a mess-around notebook, there's likely not much of use in here.
+
+
+
+Important Funcitons:
+
+SingleFreqGeometry.py:
+    point_source(self, channel, A, track, datNum) - returns the theoretical signal detected in a given channel.  track is an array of coordinates in
+    the sky, and datNum is the index of the dataset being used to determine which phase offset will be used for the detectors.
+
+    peak_height(self, track) - returns the maximum intensity of the signal from a source on a given track in each detector.  Ranges from 0 to 1,
+    indicates relative likely strength of sources in data, and how close those sources come to the zenith.
+    
+TheoryPredictor.py:
+    allParameters(self) - returns the names of all parameters managed by TheoryPredictor
+    
+    setParameters(self, params) - edits the values of TheoryPredictor parameters based on the dictionary params
+    
+    readParameters(self) - returns a dictionary of all parameters managed by TheoryPredictor and their values
+    
+    output(self, channel, datNum, sources, amp) - returns the theoretical signal predicted in a channel.  datNum is the index of the dataset, sources
+    is a list of the radio sources to be used, and if amp is false it will set all sources to the same amplitude
+    
+    showFit(self, channels, cut, mode, perSat) - makes graphs of theory versus data.  if mode is 'amp', it will plot the magnitude rather than
+    a real and imaginary plot.  If mode is 'phase', theory will keep its phase but be scaled to match the magnitude of the data.
+    
+    fit(self, names, mode, channels, datNum, cut, pprint, plot, output) - fits theory to data, using parameters listed in names.  If mode is
+    'amp', least squares will minimize the difference of magnitudes and ignore phase.  If mode is 'phase', predictions will be scaled to match the
+    magnitude of data.  channels, datNum, cut all define what section of data is being fit.  pprint, plot, and output set if the function will print
+    final parameters, plot the results, and return parameters
+    
+    trackPlot(self, cut, sats) - plots the tracks of each radio source named in sats
+    
+    findCuts(self, thresh) - returns a list of cuts in which there will always be a radio source for which the cos^2 of its altitude is above
+    thresh, along with a list of the radio sources in each cut
