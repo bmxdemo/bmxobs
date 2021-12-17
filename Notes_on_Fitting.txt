@@ -1,7 +1,7 @@
 // This document was written by Walter Cook on 12/17/2021 to outline the functions of programs found in this folder
 
 The purposes of most of the programs found here (at least the ones written by me) are to create a theoretical model for a single frequency of BMX
-observations.  This works with a chain of imports, which each subsequent program calling on the previous ones as follows:
+observations.  This works with a chain of imports, with each subsequent program calling on the previous ones as follows:
 
 bmxobs/bmxobs.py: produces the base datasets across all frequencies in the class BMXObs
 
