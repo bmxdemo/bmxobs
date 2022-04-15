@@ -95,8 +95,15 @@ Theory = TheoryPredictor(Data, Geometry = SingleFreqGeometry(len(Data), freq=Dat
 print('Begin Big Fit') #Fit Amplitudes
 print(getBigFit(Theory))
     
-if len(sys.argv)>1: # Save end parameters to file named in 2nd argument
+if len(sys.argv)>2: # Save end parameters to file named in 2nd argument
     fileOut = '15Refit/' + sys.argv[2]
+    f = open(fileOut,'w+')
+    f.write('Data_ids = {}\n\nstartParams = {}\n\nbins = {}\n\nzeroSats = {}\n\nastroObj={}\n'.format(Data_ids, Theory.readParameters(), bins, zeroSats, astroObj))
+    #startdata=f.read()
+    f.close()
+    
+else: 
+    fileOut = '15Refit/' + sys.argv[1]
     f = open(fileOut,'w+')
     f.write('Data_ids = {}\n\nstartParams = {}\n\nbins = {}\n\nzeroSats = {}\n\nastroObj={}\n'.format(Data_ids, Theory.readParameters(), bins, zeroSats, astroObj))
     #startdata=f.read()

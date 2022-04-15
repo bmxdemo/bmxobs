@@ -1,5 +1,5 @@
 #Format for call:
-#python ampFit.py {output filename} {input filename}
+#python bigFit.py {output filename} {input filename}
 
 import sys
 import bmxobs
