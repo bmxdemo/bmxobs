@@ -4,14 +4,12 @@
 #Format for call:
 #python bigFit.py {input filename}
 
-from copyreg import pickle
 import bmxobs
 from bmxobs.SingleFreqGeometry import SingleFreqGeometry
 from bmxobs.TheoryPredictor import TheoryPredictor
 
 import os, sys, argparse
-import matplotlib.pyplot as plt
-import numpy as np
+import pickle
 import multiprocessing
     
 
