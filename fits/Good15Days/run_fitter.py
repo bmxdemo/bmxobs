@@ -13,7 +13,7 @@ import pickle
 import multiprocessing
     
 
-def getBigFit(Theory, channels='all', cuts=None):
+def getBigFit(Theory, channels='all', cuts=None, airy=False):
     detectorSet = [[1,2,3,4],[5,6,7,8]]
 
     if channels.lower() == 'all':
@@ -41,9 +41,10 @@ def getBigFit(Theory, channels='all', cuts=None):
                       'D{}_beam_center_y'.format(d),
                       'D{}_beam_sigma_x'.format(d),
                       'D{}_beam_sigma_y'.format(d),
-                      #'D{}_beam_smooth_x'.format(d),
-                      #'D{}_beam_smooth_y'.format(d)
                      ]
+            if airy:
+                names += ['D{}_beam_smooth_x'.format(d),
+                          'D{}_beam_smooth_y'.format(d)]
             
             for i,D in enumerate(Theory.data):
                 names += ["A{}_{}_{}".format(d,n,i) for n in Theory.satNames]
@@ -51,7 +52,7 @@ def getBigFit(Theory, channels='all', cuts=None):
             if c%11 == 0:
                 names += ['CH{}_offset_r{}'.format(c,i) for i in range(len(Theory.data))]
         TASKS.append((names, 'all', ch, list(range(len(Theory.data))), cuts))
-        
+        print(TASKS)
             
     with multiprocessing.Pool(len(TASKS)) as pool:
         imap_it = pool.imap(Theory.fit_parallel, TASKS)
@@ -94,20 +95,27 @@ def main(args):
     print('...Creating BMX observation objects...')
     Data = [bmxobs.BMXSingleFreqObs(ids, freq_bins=bins) for ids in Data_ids]
     print('...Done creating BMX observation objects...')
-
+    
+    # Create Geometry object
+    Geometry = SingleFreqGeometry(len(Data), 
+                                  freq=Data[0].freq, 
+                                  isAiry=args.airy)
+    
     # Initalize theory predictor
     print('...Initializing theory predictor...')
     Theory = TheoryPredictor(Data,
-                             Geometry=SingleFreqGeometry(len(Data), 
-                                                         freq=Data[0].freq), 
-                                                         params=startParams, 
-                                                         zeroSats=zeroSats,
-                                                         astroObj=astroObj)
+                             Geometry, 
+                             params=startParams, 
+                             zeroSats=zeroSats,
+                             astroObj=astroObj)
     print('...Done initializing theory predictor...')
 
     # Fit
     print('...Begin fitting...')
-    paramsOut = getBigFit(Theory, channels=args.channels, cuts=args.cuts)
+    paramsOut = getBigFit(Theory, 
+                          channels=args.channels, 
+                          cuts=args.cuts, 
+                          airy=args.airy)
     print(paramsOut)
     print('...Done fitting...')
     
@@ -115,7 +123,12 @@ def main(args):
     print('...Saving parameters to pickle file...')
     if not os.path.exists(args.out_dir):
         os.makedirs(args.out_dir)
-        pickle.dump(paramsOut, open(args.out_dir+'fit_results_{}.pkl'.format(Data_ids[0].split['/'][1]), 'wb'))
+    results = {}
+    results['startParams'] = paramsOut
+    results['Data_ids'] = Data_ids
+    results['bins'] = bins
+    results['zeroSats'] = bins
+    pickle.dump(results, open(os.path.join(args.out_dir,'fit_results_{}.pkl'.format(Data_ids[0].split('/')[1])), 'wb'))
     print('...Done saving parameters to pickle file...')
 
     # Make plots
@@ -124,8 +137,8 @@ def main(args):
         plotdir = os.path.join(args.out_dir,'plots')
         if not os.path.exists(plotdir):
             os.makedirs(plotdir)
-        Theory.showFit(savedir=plotdir, )
-        Theory.showFit(savedir=plotdir, perSat=True)
+        Theory.showFit(channels=[11,12,13,14,22,23,24,33,34,44,55,56,57,58,66,67,68,77,78,88], cut=[0,-1], savedir=plotdir)
+        Theory.showFit(channels=[11,12,13,14,22,23,24,33,34,44,55,56,57,58,66,67,68,77,78,88], cut=[0,-1], savedir=plotdir, perSat=True)
 
 
 
@@ -137,7 +150,10 @@ if __name__ == "__main__":
     parser.add_argument('-bin_freq_min', dest='bin_freq_min', default=580, help='lower frequency bin', type=int)
     parser.add_argument('-bin_freq_max', dest='bin_freq_max', default=600, help='upper frequency bin', type=int)
     parser.add_argument('-out_dir', dest='out_dir', default='.', help='output directory', type=str)
+    parser.add_argument('-fit_routine', dest='fit_routine', default='scipy_LS', help='routine to find best-fit params', type=str)
     parser.add_argument('-save_plots', dest='save_plots', action='store_true', help='save diagnostic plots')
+    parser.add_argument('-airy', dest='airy', action='store_true', help='use Airy beam profile instead of gaussian')
+
 
     args = parser.parse_args()
 

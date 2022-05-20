@@ -309,7 +309,7 @@ class TheoryPredictor:
                 params['CH{}_offset_i{}'.format(ch,i)] = self.offsets_i[i][ch]
         return params #dictionary with format {'[Parameter]': value}
     
-    def output(self, channel, datNum, sources = [], amp = True): #return theory predictions
+    def output(self, channel, datNum, sources=[], amp=True): #return theory predictions
         #channel: int
         #datNum: int; index of data, indicating for which day of data to make predictions
         #sources: list of ints; indices of satellites to be used in making prediction; all satellites will be used if blank
@@ -407,29 +407,29 @@ class TheoryPredictor:
                         axes[0].plot(sats[i][n].real,label=n, alpha=0.5)
                         axes[1].plot(sats[i][n].imag,label=n, alpha=0.5)
             
-            axes[0].plot(dat[i].real,label='Data')
-            axes[0].plot(fit[i].real,label='Fit', ls='--')
+            axes[0].plot(dat[i].real, label='Data',c='k')
+            axes[0].plot(fit[i].real, label='Fit' , c='r', ls='--')
             axes[0].text(0.45,1.05,'Real', transform=axes[0].transAxes)
             axes[0].grid(alpha=0.4)
 
-            axes[1].plot(dat[i].imag,label='Data')
-            axes[1].plot(fit[i].imag,label='Fit', ls='--')
+            axes[1].plot(dat[i].imag, label='Data',c='k')
+            axes[1].plot(fit[i].imag, label='Fit', c='r', ls='--')
             axes[1].text(0.45,1.05,'Imag', transform=axes[1].transAxes)
             axes[1].grid(alpha=0.4)
 
-            fig.text(0.8,1.1,'CH {} Fit - pas/{} - [{}:{}]'.format(channels[i//len(self.data)], self.data[i].root.split('/')[-1], cut[0],cut[1]), transform=axes[0].transAxes) #, i%len(self.data)
+            fig.text(0.8,1.1,'CH {} Fit - pas/{} - [{}:{}]'.format(channels[i//len(self.data)], self.data[i//len(channels)].root.split('/')[-1], cut[0],cut[1]), transform=axes[0].transAxes) #, i%len(self.data)
             plt.legend()
             if savedir:
-                plt.savefig('{}/{}_ch{}_fit_{}_perSat{}.png'.format(self.savedir, self.data[i].root.split('/')[-1], channels[i//len(self.data)], mode, perSat))
+                plt.savefig('{}/{}_ch{}_fit{}_perSat{}.png'.format(savedir, self.data[i//len(channels)].root.split('/')[-1], channels[i//len(self.data)], mode, perSat))
                 plt.close()
             else:
                 plt.show()
 
             # Zoom-in around the peak
-            if cut == [0,-1]:
+            if cut == [0,-1] or cut == []:
                 cut_max = np.argmax(abs(dat[i]))
-                cut = [cut_max-500, cut_max+500]
-                fig = plt.figure(figsize = (12,5))
+                tmp_cut = [np.max([0,cut_max-200]), cut_max+200]
+                fig = plt.figure(figsize=(12,5))
                 axes = fig.subplots(ncols=2)
                 
                 if perSat and mode!='phase':
@@ -438,20 +438,23 @@ class TheoryPredictor:
                             axes[0].plot(sats[i][n].real,label=n, alpha=0.5)
                             axes[1].plot(sats[i][n].imag,label=n, alpha=0.5)
                 
-                axes[0].plot(dat[i].real,label='Data')
-                axes[0].plot(fit[i].real,label='Fit', ls='--')
+                axes[0].plot(dat[i].real, label='Data', c='k')
+                axes[0].plot(fit[i].real, label='Fit' , c='r', ls='--')
                 axes[0].text(0.45,1.05,'Real', transform=axes[0].transAxes)
                 axes[0].grid(alpha=0.4)
 
-                axes[1].plot(dat[i].imag,label='Data')
-                axes[1].plot(fit[i].imag,label='Fit', ls='--')
+                axes[1].plot(dat[i].imag, label='Data', c='k')
+                axes[1].plot(fit[i].imag, label='Fit' , c='r', ls='--')
                 axes[1].text(0.45,1.05,'Imag', transform=axes[1].transAxes)
                 axes[1].grid(alpha=0.4)
+                
+                axes[0].set_xlim(tmp_cut)
+                axes[1].set_xlim(tmp_cut)
 
-                fig.text(0.8,1.1,'CH {} Fit - pas/{} - [{}:{}]'.format(channels[i//len(self.data)], self.data[i].root.split('/')[-1], cut[0],cut[1]), transform=axes[0].transAxes) #, i%len(self.data)
+                fig.text(0.8,1.1,'CH {} Fit - pas/{} - [{}:{}]'.format(channels[i//len(self.data)], self.data[i//len(channels)].root.split('/')[-1], tmp_cut[0],tmp_cut[1]), transform=axes[0].transAxes) #, i%len(self.data)
                 plt.legend()
                 if savedir:
-                    plt.savefig('{}/{}_ch{}_fit_{}_perSat{}_zoomin.png'.format(self.savedir, self.data[i].root.split('/')[-1], channels[i//len(self.data)], mode, perSat))
+                    plt.savefig('{}/{}_ch{}_fit{}_perSat{}_zoomin.png'.format(savedir, self.data[i//len(channels)].root.split('/')[-1], channels[i//len(self.data)], mode, perSat))
                     plt.close()
                 else:
                     plt.show()
@@ -459,7 +462,7 @@ class TheoryPredictor:
         return
 
     
-    def fit(self, names, mode = 'all', channels = [11,12,13,14,22,23,24,33,34,44,55,56,57,58,66,67,68,77,78,88], datNum = [], cut = [0,-1], pprint = False, plot = False, output=True): #Fits named parameters to data
+    def fit(self, names, mode='all', channels=[11,12,13,14,22,23,24,33,34,44,55,56,57,58,66,67,68,77,78,88], datNum=[], cut=[0,-1], pprint=False, plot=False, output=True): #Fits named parameters to data
         #names: list of strings; names of parameters to be fit
         #mode: string; 'phase' makes predictions match data magnitude, 'amp' takes magnitude of data and predictions before subtracting, any thing else makes it run normally
         #channels: list of ints; data channels to be fit

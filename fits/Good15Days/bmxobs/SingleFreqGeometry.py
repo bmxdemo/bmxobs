@@ -4,34 +4,36 @@ from .bmxobs import BMXObs
 from scipy.special import j1
 
 class SingleBeam:
-    def __init__ (self, center = (0.,0.), sigma=(0.05,0.05), smooth=(0.05,0.05)):
+    def __init__ (self, center=(0.,0.), sigma=(0.05,0.05), smooth=(0.05,0.05)):
         self.center = np.array(center)
         self.sigma2 = np.array(sigma)**2
         self.smooth2 = np.array(smooth)**2
     
-    def __call__ (self, track, isAiry = False, fixAmp = True):
+    def __call__ (self, track, isAiry=False, fixAmp=True):
         
         def airy(x):
             return 2*j1(x)/x #if x!=0 else 1
         track = np.atleast_2d(track)
         r = (track-self.center)
-        ra = np.sqrt((r*r/self.sigma2).sum(axis=-1))
-        gk = np.exp(-0.5*((r*r)/self.smooth2).sum(axis=-1))
+        gauss = np.exp(-0.5*((r*r)/self.sigma2).sum(axis=-1))
         if isAiry:
-            beam = gk*airy(ra)
+            R = np.sqrt((r*r/self.sigma2).sum(axis=-1))
+            taper = np.exp(-0.5*((r*r)/self.smooth2).sum(axis=-1))
+            beam = airy(R)*taper
         else:
-            beam = gk
+            beam = gauss
+        
         if fixAmp:
             return beam/np.maximum(np.max(beam,axis=-1,keepdims=True),1e-20)
         else:
             return beam
         
-    def peak_height(self,track, isAiry = False):
+    def peak_height(self,track, isAiry=False):
         return np.maximum(np.max(self(track, isAiry, fixAmp=False),axis=-1,keepdims=True),1e-20)
 
 class SingleFreqGeometry:
 
-    def __init__(self, dataLen, freq=1205.0, isAiry=False, fixAmp = True):
+    def __init__(self, dataLen, freq=1205.0, isAiry=False, fixAmp=True):
         self.ant_pos = np.array([[0.,4.4],[4.4,0.],[0.,-4.4],[-4.4,0.],
                              [0.,4.4],[4.4,0.],[0.,-4.4],[-4.4,0.]])
         self.ant_beam = [SingleBeam() for i in range(8)]
@@ -52,5 +54,5 @@ class SingleFreqGeometry:
             fringe = np.exp(1j*phase)
         return A*fringe*beams
     
-    def peak_height(self,track):
+    def peak_height(self, track):
         return np.moveaxis([a.peak_height(track, self.isAiry) for a in self.ant_beam],0,-1)

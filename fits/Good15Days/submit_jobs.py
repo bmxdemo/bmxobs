@@ -21,12 +21,23 @@ import sys,os
 #     f.write ('Queue words from Good15DaysNovJan2022_federico.txt \n')
 #     f.close()
 
-def write_condor_job(fn, ds, out_dir):
+def write_condor_job(fn, ds, out_dir, channels, airy=False):
     f=open(fn,'w')
     f.write("""
 Universe        = vanilla
-Executable      = /astro/u/fbianchin/Research/bmxobs/fits/Good15Days/run_fitter.py
-Arguments       = -dataset %s -out_dir %s -save_plots
+Executable      = /astro/u/fbianchin/Research/bmxobs/fits/Good15Days/run_fitter.py"""
+           )
+    if airy:
+        f.write("""
+Arguments       = -dataset %s -out_dir %s -channels %s -save_plots -airy
+"""%(ds,out_dir,channels,)
+           )
+    else:
+        f.write("""
+Arguments       = -dataset %s -out_dir %s -channels %s -save_plots
+"""%(ds,out_dir,channels,)
+           )
+    f.write("""
 Requirements    = (CPU_Speed >= 1)
 Rank            = CPU_Speed
 request_memory  = 12000M
@@ -35,13 +46,14 @@ Priority        = 4
 GetEnv          = True
 Initialdir      = /astro/u/fbianchin/Research/bmxobs/fits/Good15Days/
 Input           = /dev/null 
-Output          = /astro/u/fbianchin/Research/bmxobs/fits/Good15Days/Condor/testout/test.%s.out
-Error           = /astro/u/fbianchin/Research/bmxobs/fits/Good15Days/Condor/testerr/test.%s.err
-Log             = /astro/u/fbianchin/Research/bmxobs/fits/Good15Days/Condor/testlog/test.%s.log
-    """%(ds,out_dir,ds)
+Output          = /astro/u/fbianchin/Research/bmxobs/fits/Good15Days/Condor/testout/test.%s_%s.out
+Error           = /astro/u/fbianchin/Research/bmxobs/fits/Good15Days/Condor/testerr/test.%s_%s.err
+Log             = /astro/u/fbianchin/Research/bmxobs/fits/Good15Days/Condor/testlog/test.%s_%s.log
+"""%(ds,channels,ds,channels,ds,channels)
     )
-    f.write ('Queue words from Good15DaysNovJan2022_federico.txt \n')
+    f.write ('Queue \n')
     f.close()
+    
     
 data_ids = ['211215_1700',
             '211213_1700',
@@ -59,9 +71,19 @@ data_ids = ['211215_1700',
             '211129_1800',
             '211121_1800'
             ]
-out_dir = '/astro/u/fbianchin/Research/bmxobs/fits/Good15Days/results_all_amp'
 
-for data_id in data_ids:
-    fname = 'all_amp_%s.job' %data_id
-    write_condor_job(fname, data_id, out_dir)
-    os.system('condor_submit '+fname)
+channels_combo = ['all','auto']
+beams = ['airy']#['gaussian','airy']
+fit_routines = ['scipy_LS']
+cuts = [None]
+
+for fit_routine in fit_routines:
+    for beam in beams:
+        for channels in channels_combo:
+            for cut in cuts:
+                out_dir = '/astro/u/fbianchin/Research/bmxobs/fits/Good15Days/results_%s_%s_%s_cuts_%s_amp'%(channels,beam,fit_routine,cut)
+                for data_id in data_ids:
+                    fname = '%s_%s_%s_%s_amp_%s.job' %(channels,beam,fit_routine,cut,data_id)
+                    write_condor_job(fname, data_id, out_dir, channels, airy=True)
+#                     write_condor_job(fname, data_id, out_dir, channels, airy=True if beam.lower() is 'airy' else False)
+                    os.system('condor_submit '+fname)
