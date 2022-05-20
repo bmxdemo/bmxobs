@@ -17,7 +17,7 @@ from astropy.time import Time
 from astropy.coordinates import AltAz, get_sun, get_moon
 
 
-def getBigFit(Theory, channels='all', cuts=None, beam_type='gaussian'):
+def getBigFit(Theory, channels='all', cuts_tag=None, beam_type='gaussian'):
     detectorSet = [[1,2,3,4],[5,6,7,8]]
 
     if channels.lower() == 'all':
@@ -31,27 +31,27 @@ def getBigFit(Theory, channels='all', cuts=None, beam_type='gaussian'):
                       [56,57,58,67,68,78]]
 
 
-    if cuts is None:
+    if cuts_tag is None:
         cuts = [0,-1]
     else:
         time = [Time(Theory.data[i].mjd, format='mjd') for i in range(len(Theory.data))]
         cuts = []
-        if cuts.lower() == 'sun_up': 
+        if cuts_tag.lower() == 'sun_up': 
             for i in range(len(Theory.data)):
                 sun = get_sun(time[i])
                 sunaltaz = sun.transform_to(AltAz(obstime=time[i], location=Theory.bmx_coords))
                 cuts.append(sunaltaz.alt > 0)
-        elif cuts.lower() == 'sun_down':
+        elif cuts_tag.lower() == 'sun_down':
             for i in range(len(Theory.data)):
                 sun = get_sun(time[i])
                 sunaltaz = sun.transform_to(AltAz(obstime=time[i], location=Theory.bmx_coords))
                 cuts.append(sunaltaz.alt < 0)
-        elif cuts.lower() == 'moon_up':
+        elif cuts_tag.lower() == 'moon_up':
             for i in range(len(Theory.data)):
                 moon = get_moon(time[i])
                 moonaltaz = moon.transform_to(AltAz(obstime=time[i], location=Theory.bmx_coords))
                 cuts.append(moonaltaz.alt > 0)
-        elif cuts.lower() == 'moon_down':
+        elif cuts_tag.lower() == 'moon_down':
             for i in range(len(Theory.data)):
                 moon = get_moon(time[i])
                 moonaltaz = moon.transform_to(AltAz(obstime=time[i], location=Theory.bmx_coords))
@@ -78,7 +78,7 @@ def getBigFit(Theory, channels='all', cuts=None, beam_type='gaussian'):
             if c%11 == 0:
                 names += ['CH{}_offset_r{}'.format(c,i) for i in range(len(Theory.data))]
         TASKS.append((names, 'all', ch, list(range(len(Theory.data))), cuts))
-        print(TASKS)
+#         print(TASKS)
             
     with multiprocessing.Pool(len(TASKS)) as pool:
         imap_it = pool.imap(Theory.fit_parallel, TASKS)
@@ -95,7 +95,11 @@ def getBigFit(Theory, channels='all', cuts=None, beam_type='gaussian'):
 
 
 def main(args):
-
+    
+    print('\n')
+    print('\n'.join(f'{k}={v}' for k, v in vars(args).items()))
+    print('\n')
+    
     if os.path.isfile(args.dataset): # Load starting parameters from file named in 1st argument
         print('...Loading data from txt file {}...'.format(args.dataset))
         fileIn = args.dataset
@@ -125,6 +129,8 @@ def main(args):
     # Create Geometry object
     if args.beam_type.lower() == 'airy':
         isAiry = True
+    else:
+        isAiry = False
     Geometry = SingleFreqGeometry(len(Data), 
                                   freq=Data[0].freq, 
                                   isAiry=isAiry)
@@ -142,10 +148,11 @@ def main(args):
     print('...Begin fitting...')
     paramsOut = getBigFit(Theory, 
                           channels=args.channels, 
-                          cuts=args.cuts, 
+                          cuts_tag=args.cuts_tag, 
                           beam_type=args.beam_type)
-    print(paramsOut)
     print('...Done...')
+    print("\n".join("{}\t{}".format(k, v) for k, v in paramsOut.items()))
+
    
     # Save parameters to pickle file
     print('...Saving parameters to pickle file...')
@@ -174,7 +181,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='BMX Beam fitter')
     parser.add_argument('-dataset', dest='dataset', help='text file or BMX obs id', type=str)
     parser.add_argument('-channels', dest='channels', help='which combinations of channels to analyze, auto/cross/all', type=str, default='all')
-    parser.add_argument('-cuts', dest='cuts', help='data splits', type=str, default=None)
+    parser.add_argument('-cuts_tag', dest='cuts_tag', help='data splits', type=str, default=None)
     parser.add_argument('-bin_freq_min', dest='bin_freq_min', default=580, help='lower frequency bin', type=int)
     parser.add_argument('-bin_freq_max', dest='bin_freq_max', default=600, help='upper frequency bin', type=int)
     parser.add_argument('-out_dir', dest='out_dir', default='.', help='output directory', type=str)

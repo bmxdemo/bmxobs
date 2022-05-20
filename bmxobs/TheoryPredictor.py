@@ -476,7 +476,7 @@ class TheoryPredictor:
         #pprint: boolean; print fit results at the end?
         #plot: boolean; plot fit results at the end?
         #output: boolean; return fit results?
-        if cut[1] == -1:
+        if cut == [0,-1] or cut == []:
             cut = [np.ones_like(self.data[i][11], dtype=bool) for i in range(len(self.data))]
             # cut[1] = len(self.data[0][11])
         if datNum == []:
@@ -521,9 +521,11 @@ class TheoryPredictor:
     
     def fit_parallel(self, params):
         #params: tuple of parameters for the fit function above
-        print('Start {}, {}, [{}:{}]'.format(params[2],params[3],params[4][0],params[4][1]))
+        print('Start {}, {}'.format(params[2],params[3]))
+#         print('Start {}, {}, [{}:{}]'.format(params[2],params[3],params[4][0],params[4][1]))
         p = self.fit(params[0],mode=params[1],channels=params[2],datNum=params[3],cut=params[4])
-        print('End {}, {}, [{}:{}]'.format(params[2],params[3],params[4][0],params[4][1]))
+        print('End {}, {}'.format(params[2],params[3]))
+#         print('End {}, {}, [{}:{}]'.format(params[2],params[3],params[4][0],params[4][1]))
         return p
     
     def sigSats(self, cut, thresh=0.03): #Gives set of satellites whose cos^2(ALT) passes below threshold
