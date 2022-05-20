@@ -3,13 +3,12 @@ from bmxobs.SingleFreqGeometry import SingleFreqGeometry
 import fitsio
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.optimize import least_squares
-from scipy.optimize import minimize
+from scipy.optimize import least_squares, minimize
 import copy
 import time
-from numba import jit
-import multiprocessing
 from scipy.signal import find_peaks
+import astropy.units as u
+from astropy.coordinates import EarthLocation
 
 class TheoryPredictor:
     def __init__(self, Data, Geometry, astroObj = {}, params = {}, thresh=0.03, zeroSats = []):
@@ -19,6 +18,9 @@ class TheoryPredictor:
         #params: dictionary with format {'[Paramter]': value}; starting values of fit parameters
         #thresh: int or float; satellites will be excluded from fitting if cos(altitude)^(-2) doesn't go below this threshhold.
         #zeroSats: 1D list of strings; any satellites named in this will be ignored by TheoryPredictor
+
+        self.bmx_coords = EarthLocation(lat=40.87792*u.deg, lon=-72.85852*u.deg, height=0*u.m)
+
         if type(Data) != list:
             Data = [Data]
         self.data = copy.deepcopy(Data) #copy of Data
@@ -159,7 +161,8 @@ class TheoryPredictor:
             
         self.var = [] #names of independent variables when fitting
         self.channels = [11,12,13,14,22,23,24,33,34,44] #channels for fit
-        self.cut = [0,len(self.data[0][11])] #cut of dataset when fitting
+        self.cut = [np.ones_like(self.data[i][11], dtype=bool) for i in range(len(self.data))] #cut of dataset when fitting
+        # self.cut = [[0,len(self.data[i][11])] for i in range(len(self.data))] #cut of dataset when fitting
         self.mode = '' #mode for fitting ('amp' for Amplitude, 'phase' for Phase)
         self.datNum = list(range(len(self.data))) #datasets actively being used in fitting
         
@@ -335,8 +338,8 @@ class TheoryPredictor:
         out = np.array([]) #1D array of floats
         for ch in self.channels:
             for i in self.datNum:
-                prediction = self.output(ch, i)[self.cut[0]:self.cut[1]] #*self.weight[i][ch]
-                data = self.data[i][ch][self.cut[0]:self.cut[1]] #*self.weight[i][ch]
+                prediction = self.output(ch, i)[self.cut[i]]#[self.cut[0]:self.cut[1]] #*self.weight[i][ch]
+                data = self.data[i][ch][self.cut[i]]#[self.cut[0]:self.cut[1]] #*self.weight[i][ch]
                 if self.mode == 'amp':
                     out = np.append(out, abs(data)-abs(prediction))
                 elif self.mode == 'phase':
@@ -368,7 +371,7 @@ class TheoryPredictor:
                 for i,D in enumerate(self.data):
                     SatOut = {}
                     for j,n in enumerate(self.satNames):
-                        prediction = self.output(ch, i, sources=[j])[cut[0]:cut[1]]
+                        prediction = self.output(ch, i, sources=[j])[self.cut[i]]#[cut[0]:cut[1]]
                         if mode == 'amp':
                             SatOut[n] = abs(prediction)
                         else:
@@ -380,8 +383,8 @@ class TheoryPredictor:
         Chis2 = []
         for ch in channels:
             for i,D in enumerate(self.data):
-                prediction = self.output(ch, i)[cut[0]:cut[1]]
-                data = D[ch][cut[0]:cut[1]]
+                prediction = self.output(ch, i)[self.cut[i]]#[cut[0]:cut[1]]
+                data = D[ch][self.cut[i]]#[cut[0]:cut[1]]
                 if mode == 'amp':
                     Dout.append(abs(data))
                     Pout.append(abs(prediction))
@@ -417,7 +420,8 @@ class TheoryPredictor:
             axes[1].text(0.45,1.05,'Imag', transform=axes[1].transAxes)
             axes[1].grid(alpha=0.4)
 
-            fig.text(0.8,1.1,'CH {} Fit - pas/{} - [{}:{}]'.format(channels[i//len(self.data)], self.data[i//len(channels)].root.split('/')[-1], cut[0],cut[1]), transform=axes[0].transAxes) #, i%len(self.data)
+            # fig.text(0.8,1.1,'CH {} Fit - pas/{} - [{}:{}]'.format(channels[i//len(self.data)], self.data[i//len(channels)].root.split('/')[-1], cut[0],cut[1]), transform=axes[0].transAxes) #, i%len(self.data)
+            fig.text(0.8,1.1,'CH {} Fit - pas/{} '.format(channels[i//len(self.data)], self.data[i//len(channels)].root.split('/')[-1],), transform=axes[0].transAxes) #, i%len(self.data)
             plt.legend()
             if savedir:
                 plt.savefig('{}/{}_ch{}_fit{}_perSat{}.png'.format(savedir, self.data[i//len(channels)].root.split('/')[-1], channels[i//len(self.data)], mode, perSat))
@@ -451,7 +455,8 @@ class TheoryPredictor:
                 axes[0].set_xlim(tmp_cut)
                 axes[1].set_xlim(tmp_cut)
 
-                fig.text(0.8,1.1,'CH {} Fit - pas/{} - [{}:{}]'.format(channels[i//len(self.data)], self.data[i//len(channels)].root.split('/')[-1], tmp_cut[0],tmp_cut[1]), transform=axes[0].transAxes) #, i%len(self.data)
+                # fig.text(0.8,1.1,'CH {} Fit - pas/{} - [{}:{}]'.format(channels[i//len(self.data)], self.data[i//len(channels)].root.split('/')[-1], tmp_cut[0],tmp_cut[1]), transform=axes[0].transAxes) #, i%len(self.data)
+                fig.text(0.8,1.1,'CH {} Fit - pas/{}'.format(channels[i//len(self.data)], self.data[i//len(channels)].root.split('/')[-1]), transform=axes[0].transAxes) #, i%len(self.data)
                 plt.legend()
                 if savedir:
                     plt.savefig('{}/{}_ch{}_fit{}_perSat{}_zoomin.png'.format(savedir, self.data[i//len(channels)].root.split('/')[-1], channels[i//len(self.data)], mode, perSat))
@@ -472,7 +477,8 @@ class TheoryPredictor:
         #plot: boolean; plot fit results at the end?
         #output: boolean; return fit results?
         if cut[1] == -1:
-            cut[1] = len(self.data[0][11])
+            cut = [np.ones_like(self.data[i][11], dtype=bool) for i in range(len(self.data))]
+            # cut[1] = len(self.data[0][11])
         if datNum == []:
             datNum = list(range(len(self.data)))
         self.var = names
