@@ -38,20 +38,54 @@ class MultiFreqGeometry:
         self.freq = freq
         print(self.freq)
         #freq in MHz
-        
+    """
     def mult_point_source(self, channel, A, track, datNum,z=[0]):
         geometry=[]
         #print(self.freq)
+        k=1.38e-23#J/K
         s=len(z)
         for freq in self.freq:
-            g=0*self.point_source(freq, channel, A, track[0], datNum)
+            g=0*self.point_source(freq, channel, A, track[0], datNum)[0]
             for i in range(s):
                 r=z[i]
                 t=track[i]
-                gauss=np.exp(-(freq-1420/(1+r))**2/(2*(1.42/(1+r))**2))/((1.42/(1+r))*np.sqrt(2*np.pi))
-                g+=self.point_source(freq, channel, A, t, datNum)*gauss
+                if 1412.9/(1+r)<=freq<=1427.1/(1+r):
+                    gauss=np.exp(-(freq-1420/(1+r))**2/(2*(1.42/(1+r))**2))/((1.42/(1+r))*np.sqrt(2*np.pi))
+                    l=0.3/freq#m
+                    a=self.point_source(freq, channel, A, t, datNum)
+                    g+=a[0]*gauss*(l**2)/2/k#/a[1]
+                else:
+                    g+=0
             geometry.append(g)
         geometry=np.array(geometry)
+        return geometry
+    """
+    def mult_point_source(self, channel, A, track, datNum,z=[0]):
+        k=1.38e-23#J/K
+        geometry=np.zeros((len(self.freq),len(track[0])))
+        #print(self.freq)
+        s=len(z)
+        
+        #first source then freq
+        for i in range(s):
+            r=z[i]
+            t=track[i]
+            #g=np.zeros(len(track[0]))#np.zeros
+            gg=[]
+            for freq in self.freq:
+                if 1412.9/(1+r)<=freq<=1427.1/(1+r):
+                    gauss=np.exp(-(freq-1420/(1+r))**2/(2*(1.42/(1+r))**2))/((1.42/(1+r))*np.sqrt(2*np.pi))
+                #change to -5sigma to 5sigma
+                    l=0.3/freq#m
+                    a=self.point_source(freq, channel, A, t, datNum)
+                    g=a*gauss*(l**2)/2/k/np.pi/0.0025#/a[1]
+                else:
+                    g=np.zeros(len(track[0]))
+                gg.append(g)
+            gg=np.array(gg)
+            geometry=np.add(geometry,gg)
+        #geometry=np.array(geometry)
+        
         return geometry
 
     def point_source (self, freq, channel, A, track, datNum):
@@ -64,4 +98,4 @@ class MultiFreqGeometry:
         else:
             phase = (track*baseline).sum(axis=-1)*2*np.pi+self.phi[datNum][ch1]-self.phi[datNum][ch2]
             fringe = np.exp(1j*phase)
-        return A*fringe*beams
+        return A*fringe*beams#,beams
