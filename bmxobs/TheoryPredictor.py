@@ -3,13 +3,12 @@ from bmxobs.SingleFreqGeometry import SingleFreqGeometry
 import fitsio
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.optimize import least_squares
-from scipy.optimize import minimize
+from scipy.optimize import least_squares, minimize
 import copy
 import time
-from numba import jit
-import multiprocessing
 from scipy.signal import find_peaks
+import astropy.units as u
+from astropy.coordinates import EarthLocation
 
 class TheoryPredictor:
     def __init__(self, Data, Geometry, astroObj = {}, params = {}, thresh=0.03, zeroSats = []):
@@ -19,6 +18,9 @@ class TheoryPredictor:
         #params: dictionary with format {'[Paramter]': value}; starting values of fit parameters
         #thresh: int or float; satellites will be excluded from fitting if cos(altitude)^(-2) doesn't go below this threshhold.
         #zeroSats: 1D list of strings; any satellites named in this will be ignored by TheoryPredictor
+
+        self.bmx_coords = EarthLocation(lat=40.87792*u.deg, lon=-72.85852*u.deg, height=0*u.m)
+
         if type(Data) != list:
             Data = [Data]
         self.data = copy.deepcopy(Data) #copy of Data
@@ -159,7 +161,8 @@ class TheoryPredictor:
             
         self.var = [] #names of independent variables when fitting
         self.channels = [11,12,13,14,22,23,24,33,34,44] #channels for fit
-        self.cut = [0,len(self.data[0][11])] #cut of dataset when fitting
+        self.cut = [np.ones_like(self.data[i][11], dtype=bool) for i in range(len(self.data))] #cut of dataset when fitting
+        # self.cut = [[0,len(self.data[i][11])] for i in range(len(self.data))] #cut of dataset when fitting
         self.mode = '' #mode for fitting ('amp' for Amplitude, 'phase' for Phase)
         self.datNum = list(range(len(self.data))) #datasets actively being used in fitting
         
@@ -309,7 +312,7 @@ class TheoryPredictor:
                 params['CH{}_offset_i{}'.format(ch,i)] = self.offsets_i[i][ch]
         return params #dictionary with format {'[Parameter]': value}
     
-    def output(self, channel, datNum, sources = [], amp = True): #return theory predictions
+    def output(self, channel, datNum, sources=[], amp=True): #return theory predictions
         #channel: int
         #datNum: int; index of data, indicating for which day of data to make predictions
         #sources: list of ints; indices of satellites to be used in making prediction; all satellites will be used if blank
@@ -335,8 +338,8 @@ class TheoryPredictor:
         out = np.array([]) #1D array of floats
         for ch in self.channels:
             for i in self.datNum:
-                prediction = self.output(ch, i)[self.cut[0]:self.cut[1]] #*self.weight[i][ch]
-                data = self.data[i][ch][self.cut[0]:self.cut[1]] #*self.weight[i][ch]
+                prediction = self.output(ch, i)[self.cut[i]]#[self.cut[0]:self.cut[1]] #*self.weight[i][ch]
+                data = self.data[i][ch][self.cut[i]]#[self.cut[0]:self.cut[1]] #*self.weight[i][ch]
                 if self.mode == 'amp':
                     out = np.append(out, abs(data)-abs(prediction))
                 elif self.mode == 'phase':
@@ -350,7 +353,7 @@ class TheoryPredictor:
         self.predictTime += time.time()-t
         return out #sum(out.real**2+out.imag**2)
 
-    def showFit(self, channels = [], cut = [], mode = '', perSat=False): #display graphs of fitted results
+    def showFit(self, channels=[], cut=[], mode='', perSat=False, savedir=False): #display graphs of fitted results
         #channels: list of ints; channels to be displayed; shows all channels if empty
         #cut: list of two ints; start and end indices of data/fit to be displayed
         #mode: string; 'phase' makes predictions match data's amplitude, 'amp' displays only magnitude of data and predictions.  Anything else makes it display normally
@@ -368,7 +371,7 @@ class TheoryPredictor:
                 for i,D in enumerate(self.data):
                     SatOut = {}
                     for j,n in enumerate(self.satNames):
-                        prediction = self.output(ch, i, sources=[j])[cut[0]:cut[1]]
+                        prediction = self.output(ch, i, sources=[j])[self.cut[i]]#[cut[0]:cut[1]]
                         if mode == 'amp':
                             SatOut[n] = abs(prediction)
                         else:
@@ -377,10 +380,11 @@ class TheoryPredictor:
         
         Dout = []
         Pout = []
+        Chis2 = []
         for ch in channels:
             for i,D in enumerate(self.data):
-                prediction = self.output(ch, i)[cut[0]:cut[1]]
-                data = D[ch][cut[0]:cut[1]]
+                prediction = self.output(ch, i)[self.cut[i]]#[cut[0]:cut[1]]
+                data = D[ch][self.cut[i]]#[cut[0]:cut[1]]
                 if mode == 'amp':
                     Dout.append(abs(data))
                     Pout.append(abs(prediction))
@@ -391,33 +395,79 @@ class TheoryPredictor:
                 else:
                     Dout.append(data)
                     Pout.append(prediction)
+                Chis2.append(np.sum((data-prediction)**2))
         dat = np.array(Dout)
         fit = np.array(Pout)
+        Chis2 = np.array(Chis2)
 
         for i in range(len(dat)):
             fig = plt.figure(figsize = (12,5))
             axes = fig.subplots(ncols=2)
-            axes[0].plot(dat[i].real,label='Data')
-            axes[0].plot(fit[i].real,label='Fit')
-            axes[0].text(0.45,1.05,'Real', transform=axes[0].transAxes)
-
-            axes[1].plot(dat[i].imag,label='Data')
-            axes[1].plot(fit[i].imag,label='Fit')
-            axes[1].text(0.45,1.05,'Imag', transform=axes[1].transAxes)
             
             if perSat and mode!='phase':
                 for n in sats[i].keys():
                     if max(abs(sats[i][n] - self.offsets_r[i%len(self.data)][channels[i//len(self.data)]])) > max(abs(fit[i] - self.offsets_r[i%len(self.data)][channels[i//len(self.data)]]))/50:
-                        axes[0].plot(sats[i][n].real,label=n)
-                        axes[1].plot(sats[i][n].imag,label=n)
+                        axes[0].plot(sats[i][n].real,label=n, alpha=0.5)
+                        axes[1].plot(sats[i][n].imag,label=n, alpha=0.5)
             
-            fig.text(0.8,1.1,'CH {} Fit - pas/211110_1900 - [{}:{}]'.format(channels[i//len(self.data)], cut[0],cut[1]), transform=axes[0].transAxes) #, i%len(self.data)
+            axes[0].plot(dat[i].real, label='Data',c='k')
+            axes[0].plot(fit[i].real, label='Fit' , c='r', ls='--')
+            axes[0].text(0.45,1.05,'Real', transform=axes[0].transAxes)
+            axes[0].grid(alpha=0.4)
+
+            axes[1].plot(dat[i].imag, label='Data',c='k')
+            axes[1].plot(fit[i].imag, label='Fit', c='r', ls='--')
+            axes[1].text(0.45,1.05,'Imag', transform=axes[1].transAxes)
+            axes[1].grid(alpha=0.4)
+
+            # fig.text(0.8,1.1,'CH {} Fit - pas/{} - [{}:{}]'.format(channels[i//len(self.data)], self.data[i//len(channels)].root.split('/')[-1], cut[0],cut[1]), transform=axes[0].transAxes) #, i%len(self.data)
+            fig.text(0.8,1.1,'CH {} Fit - pas/{} '.format(channels[i//len(self.data)], self.data[i//len(channels)].root.split('/')[-1],), transform=axes[0].transAxes) #, i%len(self.data)
             plt.legend()
-            plt.show()
-        
+            if savedir:
+                plt.savefig('{}/{}_ch{}_fit{}_perSat{}.png'.format(savedir, self.data[i//len(channels)].root.split('/')[-1], channels[i//len(self.data)], mode, perSat))
+                plt.close()
+            else:
+                plt.show()
+
+            # Zoom-in around the peak
+            if cut == [0,-1] or cut == []:
+                cut_max = np.argmax(abs(dat[i]))
+                tmp_cut = [np.max([0,cut_max-200]), cut_max+200]
+                fig = plt.figure(figsize=(12,5))
+                axes = fig.subplots(ncols=2)
+                
+                if perSat and mode!='phase':
+                    for n in sats[i].keys():
+                        if max(abs(sats[i][n] - self.offsets_r[i%len(self.data)][channels[i//len(self.data)]])) > max(abs(fit[i] - self.offsets_r[i%len(self.data)][channels[i//len(self.data)]]))/50:
+                            axes[0].plot(sats[i][n].real,label=n, alpha=0.5)
+                            axes[1].plot(sats[i][n].imag,label=n, alpha=0.5)
+                
+                axes[0].plot(dat[i].real, label='Data', c='k')
+                axes[0].plot(fit[i].real, label='Fit' , c='r', ls='--')
+                axes[0].text(0.45,1.05,'Real', transform=axes[0].transAxes)
+                axes[0].grid(alpha=0.4)
+
+                axes[1].plot(dat[i].imag, label='Data', c='k')
+                axes[1].plot(fit[i].imag, label='Fit' , c='r', ls='--')
+                axes[1].text(0.45,1.05,'Imag', transform=axes[1].transAxes)
+                axes[1].grid(alpha=0.4)
+                
+                axes[0].set_xlim(tmp_cut)
+                axes[1].set_xlim(tmp_cut)
+
+                # fig.text(0.8,1.1,'CH {} Fit - pas/{} - [{}:{}]'.format(channels[i//len(self.data)], self.data[i//len(channels)].root.split('/')[-1], tmp_cut[0],tmp_cut[1]), transform=axes[0].transAxes) #, i%len(self.data)
+                fig.text(0.8,1.1,'CH {} Fit - pas/{}'.format(channels[i//len(self.data)], self.data[i//len(channels)].root.split('/')[-1]), transform=axes[0].transAxes) #, i%len(self.data)
+                plt.legend()
+                if savedir:
+                    plt.savefig('{}/{}_ch{}_fit{}_perSat{}_zoomin.png'.format(savedir, self.data[i//len(channels)].root.split('/')[-1], channels[i//len(self.data)], mode, perSat))
+                    plt.close()
+                else:
+                    plt.show()
+
         return
+
     
-    def fit(self, names, mode = 'all', channels = [11,12,13,14,22,23,24,33,34,44,55,56,57,58,66,67,68,77,78,88], datNum = [], cut = [0,-1], pprint = False, plot = False, output=True): #Fits named parameters to data
+    def fit(self, names, mode='all', channels=[11,12,13,14,22,23,24,33,34,44,55,56,57,58,66,67,68,77,78,88], datNum=[], cut=[0,-1], pprint=False, plot=False, output=True): #Fits named parameters to data
         #names: list of strings; names of parameters to be fit
         #mode: string; 'phase' makes predictions match data magnitude, 'amp' takes magnitude of data and predictions before subtracting, any thing else makes it run normally
         #channels: list of ints; data channels to be fit
@@ -426,8 +476,9 @@ class TheoryPredictor:
         #pprint: boolean; print fit results at the end?
         #plot: boolean; plot fit results at the end?
         #output: boolean; return fit results?
-        if cut[1] == -1:
-            cut[1] = len(self.data[0][11])
+        if cut == [0,-1] or cut == []:
+            cut = [np.ones_like(self.data[i][11], dtype=bool) for i in range(len(self.data))]
+            # cut[1] = len(self.data[0][11])
         if datNum == []:
             datNum = list(range(len(self.data)))
         self.var = names
@@ -470,9 +521,11 @@ class TheoryPredictor:
     
     def fit_parallel(self, params):
         #params: tuple of parameters for the fit function above
-        print('Start {}, {}, [{}:{}]'.format(params[2],params[3],params[4][0],params[4][1]))
+        print('Start {}, {}'.format(params[2],params[3]))
+#         print('Start {}, {}, [{}:{}]'.format(params[2],params[3],params[4][0],params[4][1]))
         p = self.fit(params[0],mode=params[1],channels=params[2],datNum=params[3],cut=params[4])
-        print('End {}, {}, [{}:{}]'.format(params[2],params[3],params[4][0],params[4][1]))
+        print('End {}, {}'.format(params[2],params[3]))
+#         print('End {}, {}, [{}:{}]'.format(params[2],params[3],params[4][0],params[4][1]))
         return p
     
     def sigSats(self, cut, thresh=0.03): #Gives set of satellites whose cos^2(ALT) passes below threshold
