@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import least_squares, minimize
 import copy
 import time
-from scipy.signal import find_peaks
+from scipy.signal import find_peaks, find_peaks_cwt
 import astropy.units as u
 from astropy.coordinates import EarthLocation
 
@@ -371,7 +371,7 @@ class TheoryPredictor:
                 for i,D in enumerate(self.data):
                     SatOut = {}
                     for j,n in enumerate(self.satNames):
-                        prediction = self.output(ch, i, sources=[j])[self.cut[i]]#[cut[0]:cut[1]]
+                        prediction = self.output(ch, i, sources=[j])[cut[i]]#[cut[0]:cut[1]]
                         if mode == 'amp':
                             SatOut[n] = abs(prediction)
                         else:
@@ -383,8 +383,8 @@ class TheoryPredictor:
         Chis2 = []
         for ch in channels:
             for i,D in enumerate(self.data):
-                prediction = self.output(ch, i)[self.cut[i]]#[cut[0]:cut[1]]
-                data = D[ch][self.cut[i]]#[cut[0]:cut[1]]
+                prediction = self.output(ch, i)[cut[i]]#[cut[0]:cut[1]]
+                data = D[ch][cut[i]]#[cut[0]:cut[1]]
                 if mode == 'amp':
                     Dout.append(abs(data))
                     Pout.append(abs(prediction))
@@ -429,40 +429,46 @@ class TheoryPredictor:
             else:
                 plt.show()
 
-            # Zoom-in around the peak
-            if cut == [0,-1] or cut == []:
-                cut_max = np.argmax(abs(dat[i]))
-                tmp_cut = [np.max([0,cut_max-200]), cut_max+200]
-                fig = plt.figure(figsize=(12,5))
-                axes = fig.subplots(ncols=2)
-                
-                if perSat and mode!='phase':
-                    for n in sats[i].keys():
-                        if max(abs(sats[i][n] - self.offsets_r[i%len(self.data)][channels[i//len(self.data)]])) > max(abs(fit[i] - self.offsets_r[i%len(self.data)][channels[i//len(self.data)]]))/50:
-                            axes[0].plot(sats[i][n].real,label=n, alpha=0.5)
-                            axes[1].plot(sats[i][n].imag,label=n, alpha=0.5)
-                
-                axes[0].plot(dat[i].real, label='Data', c='k')
-                axes[0].plot(fit[i].real, label='Fit' , c='r', ls='--')
-                axes[0].text(0.45,1.05,'Real', transform=axes[0].transAxes)
-                axes[0].grid(alpha=0.4)
+            # Zoom-in around the peaks
+#             if cut == [0,-1] or cut == []:
+#             idxs, peak_dict = find_peaks(abs(dat[i]),height=np.max(abs(dat[i]))*0.3, width=30)
+#             idxs = np.insert(idxs, 0, np.argmax(abs(dat[i])))
+            idxs, peak_dict = find_peaks(abs(dat[i]), width=30, height=1.1*np.nanmedian(abs(dat[i])))
+            idxs = idxs[np.argsort(peak_dict['peak_heights'])[::-1]] # indeces of peaks in descending order
 
-                axes[1].plot(dat[i].imag, label='Data', c='k')
-                axes[1].plot(fit[i].imag, label='Fit' , c='r', ls='--')
-                axes[1].text(0.45,1.05,'Imag', transform=axes[1].transAxes)
-                axes[1].grid(alpha=0.4)
-                
-                axes[0].set_xlim(tmp_cut)
-                axes[1].set_xlim(tmp_cut)
+            for cnt, idx in enumerate(idxs):
+                if cnt < 4:
+                    tmp_cut = [np.max([0,idx-200]), idx+200]
+                    fig = plt.figure(figsize=(12,5))
+                    axes = fig.subplots(ncols=2)
 
-                # fig.text(0.8,1.1,'CH {} Fit - pas/{} - [{}:{}]'.format(channels[i//len(self.data)], self.data[i//len(channels)].root.split('/')[-1], tmp_cut[0],tmp_cut[1]), transform=axes[0].transAxes) #, i%len(self.data)
-                fig.text(0.8,1.1,'CH {} Fit - pas/{}'.format(channels[i//len(self.data)], self.data[i//len(channels)].root.split('/')[-1]), transform=axes[0].transAxes) #, i%len(self.data)
-                plt.legend()
-                if savedir:
-                    plt.savefig('{}/{}_ch{}_fit{}_perSat{}_zoomin.png'.format(savedir, self.data[i//len(channels)].root.split('/')[-1], channels[i//len(self.data)], mode, perSat))
-                    plt.close()
-                else:
-                    plt.show()
+                    if perSat and mode!='phase':
+                        for n in sats[i].keys():
+                            if max(abs(sats[i][n] - self.offsets_r[i%len(self.data)][channels[i//len(self.data)]])) > max(abs(fit[i] - self.offsets_r[i%len(self.data)][channels[i//len(self.data)]]))/50:
+                                axes[0].plot(sats[i][n].real,label=n, alpha=0.5)
+                                axes[1].plot(sats[i][n].imag,label=n, alpha=0.5)
+
+                    axes[0].plot(dat[i].real, label='Data', c='k')
+                    axes[0].plot(fit[i].real, label='Fit' , c='r', ls='--')
+                    axes[0].text(0.45,1.05,'Real', transform=axes[0].transAxes)
+                    axes[0].grid(alpha=0.4)
+
+                    axes[1].plot(dat[i].imag, label='Data', c='k')
+                    axes[1].plot(fit[i].imag, label='Fit' , c='r', ls='--')
+                    axes[1].text(0.45,1.05,'Imag', transform=axes[1].transAxes)
+                    axes[1].grid(alpha=0.4)
+
+                    axes[0].set_xlim(tmp_cut)
+                    axes[1].set_xlim(tmp_cut)
+
+                    # fig.text(0.8,1.1,'CH {} Fit - pas/{} - [{}:{}]'.format(channels[i//len(self.data)], self.data[i//len(channels)].root.split('/')[-1], tmp_cut[0],tmp_cut[1]), transform=axes[0].transAxes) #, i%len(self.data)
+                    fig.text(0.8,1.1,'CH {} Fit - pas/{}'.format(channels[i//len(self.data)], self.data[i//len(channels)].root.split('/')[-1]), transform=axes[0].transAxes) #, i%len(self.data)
+                    plt.legend()
+                    if savedir:
+                        plt.savefig('{}/{}_ch{}_fit{}_perSat{}_zoomin_{}.png'.format(savedir, self.data[i//len(channels)].root.split('/')[-1], channels[i//len(self.data)], mode, perSat, cnt))
+                        plt.close()
+                    else:
+                        plt.show()
 
         return
 
@@ -543,19 +549,45 @@ class TheoryPredictor:
                         sats = sats | {n}
         return sats
     
-    def trackPlot(self, cut=[0,-1], sats=[]): #Plots 2D path of satellites
-        #cut: list of two ints
-        #sats: list of strings: names of satellites to plot
-        if sats==[]:
-            sats = list(self.satNames)
-        for n,track in zip(self.satNames, self.satTracks):
-            for i,D in enumerate(self.data):
-                if n in sats:
-                    plt.figure(figsize=(12,10))
-                    plt.plot(track[i,cut[0]:cut[1],0],track[i,cut[0]:cut[1],1])
-                    plt.title('{} track : DataSet {}'.format(n,i))
-                    plt.show()
-    
+#     def trackPlot(self, cut=[0,-1], sats=[]): #Plots 2D path of satellites
+#         #cut: list of two ints
+#         #sats: list of strings: names of satellites to plot
+#         if sats==[]:
+#             sats = list(self.satNames)
+#         for n,track in zip(self.satNames, self.satTracks):
+#             for i,D in enumerate(self.data):
+#                 if n in sats:
+#                     plt.figure(figsize=(12,10))
+#                     plt.plot(track[i,cut[0]:cut[1],0],track[i,cut[0]:cut[1],1])
+#                     plt.title('{} track : DataSet {}'.format(n,i))
+#                     plt.show()
+
+    def trackPlot(self, thresh=0.03, sats=None, savedir=None, delta_time=100):
+        if sats is None:
+            sats = self.satNames
+        color = plt.cm.rainbow(np.linspace(0, 1, (len(sats))))
+        for i,D in enumerate(self.data):
+            for j, n in enumerate(sats):
+                if n == 'Cygnus_A': continue
+                cos2 = np.cos(np.array(D.sat)[np.array(D.sat_id)==n][0]['alt'])**(-2)
+                peaks = find_peaks(cos2,height=1/thresh)[0]
+                for peak in peaks:
+                    tmp = [peak-delta_time,peak+delta_time]
+                    plt.scatter(np.rad2deg(self.satTracks[j,0,tmp[0]:tmp[1],0]),np.rad2deg(self.satTracks[j,0,tmp[0]:tmp[1],1]),s=1, color=color[j])
+                    plt.plot(np.rad2deg(self.satTracks[j,0,peak,0]),np.rad2deg(self.satTracks[j,0,peak,1]),'o', color=color[j])
+            plt.axhline(ls='--', c='k')
+            plt.axvline(ls='--', c='k')
+            plt.xlim(-10,10)
+            plt.ylim(-10,10)
+            plt.xlabel(r'$\Delta x$ [deg]',size=14)
+            plt.ylabel(r'$\Delta y$ [deg]',size=14)
+            plt.tight_layout()
+            if savedir is not None:
+                plt.savefig('{}/sat_tracks_{}.png'.format(savedir,D.root.split('/')[-1]), dpi=200)
+                plt.close()
+
+
+                
     def findCuts(self, thresh=0.03): #Find optimal cuts for separately fitting satellite amplitudes
         #thresh: float; a satellite's signal is present if cos(altitude)^2 <= thresh
         Cuts = []
