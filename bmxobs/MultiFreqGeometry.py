@@ -33,7 +33,15 @@ class MultiFreqGeometry:
     def __init__(self, dataLen, freq=np.arange(1250,1421.25,1.25), airy=False, fixAmp = True, z=1):
         self.ant_pos = np.array([[0.,4.],[4.,0.],[0.,-4.],[-4.,0.],
                              [0.,4.],[4.,0.],[0.,-4.],[-4.,0.]])
-        self.ant_beam = [SingleBeam(airy=airy, fixAmp=fixAmp) for i in range(8)]
+        self.ant_beam = []
+        self.ant_beam.append(SingleBeam(center = (0.009,-0.015), sigma=(0.044,0.039), airy=airy, fixAmp=fixAmp))
+        self.ant_beam.append(SingleBeam(center = (0.015,-0.02), sigma=(0.043,0.04), airy=airy, fixAmp=fixAmp))
+        self.ant_beam.append(SingleBeam(center = (-0.001,-0.009), sigma=(0.036,0.047), airy=airy, fixAmp=fixAmp))
+        self.ant_beam.append(SingleBeam(center = (-0.043,0.016), sigma=(0.046,0.033), airy=airy, fixAmp=fixAmp))
+        self.ant_beam.append(SingleBeam(center = (0.016,-0.014), sigma=(0.037,0.04), airy=airy, fixAmp=fixAmp))
+        self.ant_beam.append(SingleBeam(center = (0.007,-0.028), sigma=(0.055,0.035), airy=airy, fixAmp=fixAmp))
+        self.ant_beam.append(SingleBeam(center = (0.007,-0.022), sigma=(0.057,0.036), airy=airy, fixAmp=fixAmp))
+        self.ant_beam.append(SingleBeam(center = (-0.04,0.016), sigma=(0.058,0.034), airy=airy, fixAmp=fixAmp))
         self.phi = np.zeros((dataLen, 8))
         self.freq = freq
         print(self.freq)
@@ -61,6 +69,7 @@ class MultiFreqGeometry:
         return geometry
     """
     def mult_point_source(self, channel, A, track, datNum,z=[0]):
+        
         k=1.38e-23#J/K
         geometry=np.zeros((len(self.freq),len(track[0])))
         #print(self.freq)
