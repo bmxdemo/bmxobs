@@ -74,6 +74,24 @@ class MultiFreqGeometry:
         geometry=np.zeros((len(self.freq),len(track[0])))
         #print(self.freq)
         s=len(z)
+        if channel==11:
+            solid=1.133*0.044*0.039#pi/4/ln(2)~1.133
+        elif channel==22:
+            solid=1.133*0.043*0.04
+        elif channel==33:
+            solid=1.133*0.036*0.047
+        elif channel==44:
+            solid=1.133*0.046*0.033
+        elif channel==55:
+            solid=1.133*0.037*0.04
+        elif channel==66:
+            solid=1.133*0.055*0.035
+        elif channel==77:
+            solid=1.133*0.057*0.036
+        elif channel==88:
+            solid=1.133*0.058*0.034
+        else:
+            print('error')
         
         #first source then freq
         for i in range(s):
@@ -87,7 +105,7 @@ class MultiFreqGeometry:
                 #change to -5sigma to 5sigma
                     l=300/freq#m
                     a=self.point_source(freq, channel, A, t, datNum)
-                    g=a*gauss*(l**2)/2/k/np.pi/np.sqrt(self.sigma2[0]*self.sigma2[1])#0.0025#/a[1]
+                    g=a*gauss*(l**2)/2/k/np.pi/solid#0.0025#/a[1]
                 else:
                     g=np.zeros(len(track[0]))
                 gg.append(g)
