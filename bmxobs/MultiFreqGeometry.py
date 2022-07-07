@@ -18,7 +18,7 @@ class SingleBeam:
         track = np.atleast_2d(track)
         r = (track-self.center)
         ra = np.sqrt((r*r/self.smooth2).sum(axis=-1))
-        gk = np.exp(-0.5*((r*r)/self.smooth2).sum(axis=-1))
+        gk = np.exp(-0.5*((r*r)/self.sigma2).sum(axis=-1))
         if self.airy:
             beam = airy(ra)
         else:
