@@ -85,9 +85,9 @@ class MultiFreqGeometry:
                 if 1412.9/(1+r)<=freq<=1427.1/(1+r):
                     gauss=np.exp(-(freq-1420/(1+r))**2/(2*(1.42/(1+r))**2))/((1.42/(1+r))*np.sqrt(2*np.pi))
                 #change to -5sigma to 5sigma
-                    l=0.3/freq#m
+                    l=300/freq#m
                     a=self.point_source(freq, channel, A, t, datNum)
-                    g=a*gauss*(l**2)/2/k/np.pi/0.0025#/a[1]
+                    g=a*gauss*(l**2)/2/k/np.pi/np.sqrt(self.sigma2[0]*self.sigma2[1])#0.0025#/a[1]
                 else:
                     g=np.zeros(len(track[0]))
                 gg.append(g)
