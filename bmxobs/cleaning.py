@@ -21,91 +21,104 @@ import astropy.units as u
 import csv
 from numpy import genfromtxt
 from scipy.interpolate import interp1d
+from scipy.signal import find_peaks
+from scipy.signal import savgol_filter
 
 class Cleaning:
-    def __init__(self,data=bmxobs.BMXObs("pas/210903_0000/",channels="110"),template=genfromtxt('11fake1.csv', delimiter=','),ch='11'):
+    def __init__(self,data=bmxobs.BMXObs("pas/210903_0000/",channels="110"),template=genfromtxt('11fake1.csv', delimiter=','),ch='11',a=0):
         #generating noise components
         self.d=data
         self.template=template
         self.ch=ch
+        self.a=a
+        
         if self.ch=='11':
-            trainpatch=self.d[110][20000:40000,759:1200]
+            trainpatch=self.d[110][:40000,759:1200].reshape(-1, 10, 441).mean(axis = 1)#+self.a*np.real(self.template[:,:4000].T)
         if self.ch=='22':
-            trainpatch=self.d[220][20000:40000,759:1200]
+            trainpatch=self.d[220][:40000,759:1200].reshape(-1, 10, 441).mean(axis = 1)
         if self.ch=='44':
-            trainpatch=self.d[440][20000:40000,759:1200]
+            trainpatch=self.d[440][:40000,759:1200].reshape(-1, 10, 441).mean(axis = 1)
         if self.ch=='55':
-            trainpatch=self.d[550][20000:40000,759:1200]
-        m=np.mean(trainpatch,axis=0)
-        ave=trainpatch/m-1
+            trainpatch=self.d[550][:40000,759:1200].reshape(-1, 10, 441).mean(axis = 1)
+        
+        for i in range(4000):
+            trainpatch[i]=savgol_filter(trainpatch[i], 441, 17)
+            peaks, _ = find_peaks(-trainpatch[i], threshold=5e10)
+            for x in peaks:
+                trainpatch[i][x]=0.5*(trainpatch[i][x-1]+trainpatch[i][x+1])
+        for j in range(441):
+            trainpatch[:,j]=savgol_filter(trainpatch[:,j], 3599, 15)
+            
+            for y in range(1795,2206):
+                trainpatch[:,j][y]=trainpatch[:,j][1795]
+        #trainpatch+=self.a*np.real(self.template[:,:4000].T)
+        
+        ave=self.regularize(trainpatch)
+        
         M=np.dot(ave.T,ave)
         w,self.v=np.linalg.eig(M)
-        o=[]
-        for j in range(20000):
-            f=np.copy(trainpatch[j])
-            f/=m
-            f-=1
-            for i in range(30):
-                weight=np.dot(f,self.v[:,i])/np.dot(self.v[:,i],self.v[:,i])
-                f-=weight*self.v[:,i]
-            o.append(f)
-        self.cleantrain=np.array(o)
-            
+        
+        
     def cleandata(self):
         #clean up data patch
         if self.ch=='11':
-            datapatch=self.d[110][50003:86003,759:1200]
+            datapatch=self.d[110][50004:86004,759:1200].reshape(-1, 10, 441).mean(axis = 1)#+self.a*np.real(self.template[:,5000:8600].T)
         if self.ch=='22':
-            datapatch=self.d[220][50003:86003,759:1200]
+            datapatch=self.d[220][50004:86004,759:1200].reshape(-1, 10, 441).mean(axis = 1)
         if self.ch=='44':
-            datapatch=self.d[440][50003:86003,759:1200]
+            datapatch=self.d[440][50004:86004,759:1200].reshape(-1, 10, 441).mean(axis = 1)
         if self.ch=='55':
-            datapatch=self.d[550][50003:86003,759:1200]
+            datapatch=self.d[550][50004:86004,759:1200].reshape(-1, 10, 441).mean(axis = 1)
         
-        m=np.mean(datapatch,axis=0)
-        s=[]
-        for j in range(36000):
-            f=np.copy(datapatch[j])
-            f/=m
-            f-=1
-            for i in range(30):
-                weight=np.dot(f,self.v[:,i])/np.dot(self.v[:,i],self.v[:,i])
-                f-=weight*self.v[:,i]
-            s.append(f)
-        s=np.array(s)
-        ave=s.reshape(-1, 100, 441).mean(axis = 1)
-        return ave
+        for i in range(3600):
+            datapatch[i]=savgol_filter(datapatch[i], 441, 17)
+            peaks, _ = find_peaks(-datapatch[i], threshold=5e10)
+            for x in peaks:
+                datapatch[i][x]=0.5*(datapatch[i][x-1]+datapatch[i][x+1])
+        for j in range(441):
+            datapatch[:,j]=savgol_filter(datapatch[:,j], 3599, 15)
+            peaks, _ = find_peaks(-datapatch[:,j], width=(1,3))
+            for y in peaks:
+                datapatch[:,j][y]=datapatch[:,j][y-1]
+                datapatch[:,j][y+1]=datapatch[:,j][y+2]
+        datapatch+=self.a*np.real(self.template[:,5000:8600].T)
+        ave=self.regularize(datapatch)
+        aver=self.clean(ave)
+        return aver
     
     def cleantemplate(self):
         #clean up template patch
         #freq=self.d.freq[0][759:1200]
         temp=self.template[:,5000:8600].T
-        #temp=temp[43:].T
-        m=np.mean(temp,axis=0)
-        """
-        nu=np.arange(1305,1421.51,1.25)
-        x=np.array([])
-        for i in range(30):
-            f=interp1d(freq, self.v[:,i])
-            fitted=f(nu)
-            x=np.append(x,fitted)
-        x=np.reshape(x, (30, 94))
-        """
+        
+        ave=self.regularize(temp)
+        aver=self.clean(ave)
+        return aver
+    
+    def regularize(self,o):
+        m=np.mean(o,axis=0)
+        g=np.mean(o,axis=1)
+        
+        ave=o/np.outer(g,m)*np.mean(o)-1
+        for i in range(441):
+            ave[:,i]=ave[:,i]/np.std(ave[:,i])
+        return ave
+    
+    def clean(self,a):
         s=[]
-
-        for j in range(3600):
-            p=np.copy(temp[j])
-            p/=m
-            p-=1
+            
+        for j in range(len(a)):
+            p=np.copy(a[j])
             for i in range(30):
                 weight=np.dot(p,self.v[:,i])/np.dot(self.v[:,i],self.v[:,i])
-                p-=weight*self.v[:,i]
+                p-=np.real(weight*self.v[:,i])
             s.append(p)
         s=np.array(s)
-        ave=s.reshape(-1, 10, 441).mean(axis = 1)
-        return ave
+        c=s.reshape(-1, 10, 441).mean(axis = 1)
+        return c
+        
 class SNR:
-    def __init__(self,cross=np.load('data/fake/cross/crossreal11fake1.npy',allow_pickle=True),li=[]):
+    def __init__(self,cross=np.load('crossreal.npy',allow_pickle=True),li=[]):
         #calculating SNR map
         self.crossreal=cross
         self.li=li
@@ -130,7 +143,6 @@ class SNR:
         for i in range(52):
             for j in time:
                 for k in freq:
-            
                     if np.abs(crossrealmatprim[i,j,k])>cut*variance[j,k]:
                         crossrealmatprim[i,j,k]=np.nan
         time=np.arange(0,720,25)
@@ -147,7 +159,6 @@ class SNR:
         for i in range(52):
             for j in time:
                 for k in freq:
-            
                     if np.abs(crossrealmatprim[i,j,k])>cut*variance[j,k]:
                         crossrealmatprim[i,j,k]=np.nan
         
@@ -165,7 +176,6 @@ class SNR:
         for i in range(52):
             for j in time:
                 for k in freq:
-            
                     if np.abs(crossrealmatprim[i,j,k])>cut*variance[j,k]:
                         crossrealmatprim[i,j,k]=np.nan
     
@@ -173,15 +183,15 @@ class SNR:
         for i in range(52):
             crossrealmat.append(crossrealmatprim[i])
         crossrealmat=np.array(crossrealmat)
-        snrr=np.nanmean(crossrealmat,axis=0)[85:635,50:]/np.sqrt(np.nanvar(crossrealmat,axis=0)[85:635,50:])
-        for i in range(550):
-            for j in range(392):
+        snrr=np.nanmean(crossrealmat,axis=0)[180:580,100:]/np.sqrt(np.nanvar(crossrealmat,axis=0)[180:580,100:])
+        for i in range(400):
+            for j in range(342):
                 num=52
                 for k in range(52):
-                    if crossrealmat[k,i+85,j+50]==np.nan:
+                    if crossrealmat[k,i+180,j+100]==np.nan:
                         num-=1
                 snrr[i,j]=snrr[i,j]*np.sqrt(num)
         self.snr=snrr
         self.mean=np.nanmean(self.snr)
-        self.var=np.sqrt(np.nanvar(snrr)/550/392)
+        self.var=np.sqrt(np.nanvar(snrr)/400/342)
         self.detect=self.mean/self.var
