@@ -41,17 +41,9 @@ class Cleaning:
         if self.ch=='55':
             trainpatch=self.d[550][:40000,759:1200].reshape(-1, 10, 441).mean(axis = 1)
         
-        for i in range(4000):
-            trainpatch[i]=savgol_filter(trainpatch[i], 441, 17)
-            peaks, _ = find_peaks(-trainpatch[i], threshold=5e10)
-            for x in peaks:
-                trainpatch[i][x]=0.5*(trainpatch[i][x-1]+trainpatch[i][x+1])
-        for j in range(441):
-            trainpatch[:,j]=savgol_filter(trainpatch[:,j], 3599, 15)
-            
-            for y in range(1795,2206):
-                trainpatch[:,j][y]=trainpatch[:,j][1795]
-        #trainpatch+=self.a*np.real(self.template[:,:4000].T)
+        for k in range(3):
+            trainpatch=self.spikeremoval(trainpatch)
+        trainpatch+=self.a*np.real(self.template[:,:4000].T)
         
         ave=self.regularize(trainpatch)
         
@@ -62,25 +54,15 @@ class Cleaning:
     def cleandata(self):
         #clean up data patch
         if self.ch=='11':
-            datapatch=self.d[110][50004:86004,759:1200].reshape(-1, 10, 441).mean(axis = 1)#+self.a*np.real(self.template[:,5000:8600].T)
+            datapatch=self.d[110][50000:86000,759:1200].reshape(-1, 10, 441).mean(axis = 1)#+self.a*np.real(self.template[:,5000:8600].T)
         if self.ch=='22':
-            datapatch=self.d[220][50004:86004,759:1200].reshape(-1, 10, 441).mean(axis = 1)
+            datapatch=self.d[220][50000:86000,759:1200].reshape(-1, 10, 441).mean(axis = 1)
         if self.ch=='44':
-            datapatch=self.d[440][50004:86004,759:1200].reshape(-1, 10, 441).mean(axis = 1)
+            datapatch=self.d[440][50000:86000,759:1200].reshape(-1, 10, 441).mean(axis = 1)
         if self.ch=='55':
-            datapatch=self.d[550][50004:86004,759:1200].reshape(-1, 10, 441).mean(axis = 1)
-        
-        for i in range(3600):
-            datapatch[i]=savgol_filter(datapatch[i], 441, 17)
-            peaks, _ = find_peaks(-datapatch[i], threshold=5e10)
-            for x in peaks:
-                datapatch[i][x]=0.5*(datapatch[i][x-1]+datapatch[i][x+1])
-        for j in range(441):
-            datapatch[:,j]=savgol_filter(datapatch[:,j], 3599, 15)
-            peaks, _ = find_peaks(-datapatch[:,j], width=(1,3))
-            for y in peaks:
-                datapatch[:,j][y]=datapatch[:,j][y-1]
-                datapatch[:,j][y+1]=datapatch[:,j][y+2]
+            datapatch=self.d[550][50000:86000,759:1200].reshape(-1, 10, 441).mean(axis = 1)
+        for k in range(3):
+            datapatch=self.spikeremoval(datapatch)
         datapatch+=self.a*np.real(self.template[:,5000:8600].T)
         ave=self.regularize(datapatch)
         aver=self.clean(ave)
@@ -100,8 +82,8 @@ class Cleaning:
         g=np.mean(o,axis=1)
         
         ave=o/np.outer(g,m)*np.mean(o)-1
-        for i in range(441):
-            ave[:,i]=ave[:,i]/np.std(ave[:,i])
+        #for i in range(441):
+         #   ave[:,i]=ave[:,i]/np.std(ave[:,i])
         return ave
     
     def clean(self,a):
@@ -116,6 +98,22 @@ class Cleaning:
         s=np.array(s)
         c=s.reshape(-1, 10, 441).mean(axis = 1)
         return c
+    
+    def spikeremoval(self,patch):
+        for j in range(83,441):
+            mean=np.mean(patch[:,j])
+            std=np.std(patch[:,j])
+            for i in range(len(patch)):
+                if patch[i,j]>mean+std:
+                    patch[i,j]=np.nan
+        for j in range(83,441):
+            peaks, _ = find_peaks(patch[:,j],prominence=1e11,width=(0,10))
+            for i in peaks:
+                patch[i,j]=np.nan
+        for j in range(441):
+            nans, x= np.isnan(patch[:,j]), lambda z: z.nonzero()[0]
+            patch[:,j][nans]= np.interp(x(nans), x(~nans), patch[:,j][~nans])
+        return patch
         
 class SNR:
     def __init__(self,cross=np.load('crossreal.npy',allow_pickle=True),li=[]):
