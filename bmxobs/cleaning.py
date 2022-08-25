@@ -23,6 +23,7 @@ from numpy import genfromtxt
 from scipy.interpolate import interp1d
 from scipy.signal import find_peaks
 from scipy.signal import savgol_filter
+from scipy.interpolate import interp1d
 
 class Cleaning:
     def __init__(self,data=bmxobs.BMXObs("pas/210903_0000/",channels="110"),template=genfromtxt('11fake1.csv', delimiter=','),ch='11',a=0):
@@ -33,16 +34,19 @@ class Cleaning:
         self.a=a
         
         if self.ch=='11':
-            trainpatch=self.d[110][:40000,759:1200].reshape(-1, 10, 441).mean(axis = 1)#+self.a*np.real(self.template[:,:4000].T)
+            trainpatch=self.d[110][:40000,759:1200]#.reshape(-1, 10, 441).mean(axis = 1)#+self.a*np.real(self.template[:,:4000].T)
         if self.ch=='22':
-            trainpatch=self.d[220][:40000,759:1200].reshape(-1, 10, 441).mean(axis = 1)
+            trainpatch=self.d[220][:40000,759:1200]#.reshape(-1, 10, 441).mean(axis = 1)
         if self.ch=='44':
-            trainpatch=self.d[440][:40000,759:1200].reshape(-1, 10, 441).mean(axis = 1)
+            trainpatch=self.d[440][:40000,759:1200]#.reshape(-1, 10, 441).mean(axis = 1)
         if self.ch=='55':
-            trainpatch=self.d[550][:40000,759:1200].reshape(-1, 10, 441).mean(axis = 1)
+            trainpatch=self.d[550][:40000,759:1200]#.reshape(-1, 10, 441).mean(axis = 1)
         
-        for k in range(3):
-            trainpatch=self.spikeremoval(trainpatch)
+        #for k in range(3):
+         
+        trainpatch=self.spikeremoval(trainpatch,train=True)
+            
+        trainpatch=trainpatch.reshape(-1, 10, 441).mean(axis = 1)
         trainpatch+=self.a*np.real(self.template[:,:4000].T)
         
         ave=self.regularize(trainpatch)
@@ -61,8 +65,8 @@ class Cleaning:
             datapatch=self.d[440][50000:86000,759:1200].reshape(-1, 10, 441).mean(axis = 1)
         if self.ch=='55':
             datapatch=self.d[550][50000:86000,759:1200].reshape(-1, 10, 441).mean(axis = 1)
-        for k in range(3):
-            datapatch=self.spikeremoval(datapatch)
+        #for k in range(3):
+        datapatch=self.spikeremoval(datapatch,train=False)
         datapatch+=self.a*np.real(self.template[:,5000:8600].T)
         ave=self.regularize(datapatch)
         aver=self.clean(ave)
@@ -99,21 +103,66 @@ class Cleaning:
         c=s.reshape(-1, 10, 441).mean(axis = 1)
         return c
     
-    def spikeremoval(self,patch):
+    def spikeremoval(self,patch,train=True):
+        """
+        peaks, _ = find_peaks(np.mean(patch,axis=0),width=(0,5))
+        shift=[-7,-6,-5,-4,-3,-2,-1,1,2,3,4,5,6,7]
+        con=peaks
+        for i in shift:
+            n=peaks+i
+            con=np.concatenate((con, n))
+        peaks=con
+        for i in peaks:
+            for j in range(len(patch)):
+                patch[j,i]=np.nan
+        for j in range(len(patch)):
+            nans, x= np.isnan(patch[j]), lambda z: z.nonzero()[0]
+            patch[j][nans]= np.interp(x(nans), x(~nans), patch[j][~nans])
+
         for j in range(83,441):
             mean=np.mean(patch[:,j])
             std=np.std(patch[:,j])
             for i in range(len(patch)):
                 if patch[i,j]>mean+std:
                     patch[i,j]=np.nan
-        for j in range(83,441):
-            peaks, _ = find_peaks(patch[:,j],prominence=1e11,width=(0,10))
-            for i in peaks:
-                patch[i,j]=np.nan
-        for j in range(441):
-            nans, x= np.isnan(patch[:,j]), lambda z: z.nonzero()[0]
-            patch[:,j][nans]= np.interp(x(nans), x(~nans), patch[:,j][~nans])
-        return patch
+        """
+        newpatch = patch.copy()
+        for idt in range(patch.shape[0]):
+            der = np.divide(np.abs(np.diff(patch[idt,:])),patch[idt,:-1])
+            badpixs = np.where(der > 0.01)[0]
+            for badpix in badpixs:
+                newpatch[idt,badpix-2:badpix+2] = np.median(patch[idt,badpix-6:badpix+6])
+        
+        bad=[83,84,85,86,87,88,283,284,285,286,287,288,289,290,291,293]
+        for i in range(len(newpatch)):
+            for j in bad:
+                newpatch[i,j]=np.nan
+        if train==False:
+            lim=8e12
+        else:
+            lim=9e12
+        for i in range(len(newpatch)):
+            for j in range(80,441):
+                if newpatch[i,j]>lim:
+                    newpatch[i,j]=np.nan
+        for j in range(len(patch)):
+            nans, x= np.isnan(newpatch[j]), lambda z: z.nonzero()[0]
+            newpatch[j][nans]= np.interp(x(nans), x(~nans), newpatch[j][~nans])
+        #for idt in range(patch.shape[1]):
+            #der = np.divide(np.abs(np.diff(patch[:,idt])),patch[:-1,idt])
+            #badpixs = np.where(der > 0.01)[0]
+            #for badpix in badpixs:
+                #newpatch[badpix-2:badpix+2,idt] = np.median(patch[badpix-5:badpix+5,idt])
+        if (train):
+            for j in range(0,441):
+                for i in range(5640,11660):
+                    newpatch[i,j]=np.nan
+        
+        for j in range(0,441):
+            nans, x= np.isnan(newpatch[:,j]), lambda z: z.nonzero()[0]
+            newpatch[:,j][nans]= np.interp(x(nans), x(~nans), newpatch[:,j][~nans])
+            
+        return newpatch
         
 class SNR:
     def __init__(self,cross=np.load('crossreal.npy',allow_pickle=True),li=[]):
